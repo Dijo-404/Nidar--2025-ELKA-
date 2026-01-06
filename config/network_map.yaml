@@ -1,18 +1,19 @@
 # Nidar Network Configuration
 # Local network topology for drone-to-drone communication via ground relay
+# Network: SIYI Transmitter Hotspot (192.168.144.x)
 
-# Ground Relay Server (Arch Linux Laptop)
+# Ground Relay Server (Laptop connected to SIYI hotspot)
 ground_relay:
-  ip: "192.168.1.100"            # Static IP of the laptop
+  ip: "192.168.144.100"          # Laptop IP on SIYI network (set static)
   zmq_port: 5555                 # ZMQ ROUTER socket port
   status_port: 5556              # Status/monitoring port
   heartbeat_interval: 1.0        # seconds between heartbeats
   heartbeat_timeout: 5.0         # seconds before connection considered lost
 
-# Ground Control Station (Mission Planner)
+# Ground Control Station (Mission Planner on same laptop)
 gcs:
   enabled: true                  # Enable telemetry forwarding to GCS
-  ip: "192.168.1.100"            # IP where Mission Planner is running
+  ip: "192.168.144.100"          # IP where Mission Planner is running
   drone1_port: 14560             # UDP port for Drone 1 telemetry
   drone2_port: 14561             # UDP port for Drone 2 telemetry
   forward_all_messages: true     # Forward all MAVLink messages
