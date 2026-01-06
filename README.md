@@ -1,18 +1,18 @@
-# Antigravity Core
+# Nidar - Dual-Drone Mission Control System
 
-**Dual-Drone Mission Control System for Survey and Payload Delivery**
+A locally-networked system for coordinating two drones: one surveys an area using YOLO-based human detection, while the other delivers payloads to detected locations.
 
-A robust, locally-networked system for coordinating two drones: one surveys an area using YOLO-based human detection, while the other delivers payloads to detected locations.
+---
 
-## 🚁 System Overview
+## System Overview
 
 ```
 ┌─────────────────────┐         ┌─────────────────────┐
 │   DRONE 1: SURVEYOR │         │  DRONE 2: DELIVERER │
 │                     │         │                     │
-│  • KML Path Planning│         │  • FIFO Target Queue│
-│  • YOLO Detection   │   ZMQ   │  • Payload Servo    │
-│  • GPS Transmission │◄───────►│  • Drop Execution   │
+│  - KML Path Planning│         │  - FIFO Target Queue│
+│  - YOLO Detection   │   ZMQ   │  - Payload Servo    │
+│  - GPS Transmission │◄───────►│  - Drop Execution   │
 └─────────────────────┘         └─────────────────────┘
           │                               │
           │           ┌───────┐           │
@@ -21,10 +21,12 @@ A robust, locally-networked system for coordinating two drones: one surveys an a
                       └───────┘
 ```
 
-## 📂 Project Structure
+---
+
+## Project Structure
 
 ```
-antigravity_core/
+Nidar--2025-ELKA-/
 ├── config/                     # Configuration files
 │   ├── mission_params.yaml     # Flight, detection, payload settings
 │   ├── network_map.yaml        # Network IPs and ports
@@ -37,7 +39,7 @@ antigravity_core/
 │   │   └── payload_servo.py    # Drop mechanism driver
 │   │
 │   ├── intelligence/           # Decision making
-│   │   ├── path_finder.py      # KML → Waypoints
+│   │   ├── path_finder.py      # KML to waypoints conversion
 │   │   └── human_detector.py   # YOLO detection
 │   │
 │   ├── comms/                  # Networking
@@ -58,7 +60,9 @@ antigravity_core/
 └── requirements.txt            # Dependencies
 ```
 
-## 🛠️ Installation
+---
+
+## Installation
 
 ### Prerequisites
 
@@ -70,28 +74,25 @@ antigravity_core/
 ### Setup
 
 ```bash
-# Clone repository
-git clone <your-repo-url>
-cd antigravity_core
-
 # Create virtual environment
 python -m venv venv
-source venv/bin/activate  # Linux/macOS
-# or: venv\Scripts\activate  # Windows
+source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 ```
 
-## ⚙️ Configuration
+---
 
-### 1. Network Setup (`config/network_map.yaml`)
+## Configuration
 
-Configure static IPs for your local network:
+### 1. Network Setup
+
+Edit `config/network_map.yaml` with your local network IPs:
 
 ```yaml
 ground_relay:
-  ip: "192.168.1.100"    # Your laptop's IP
+  ip: "192.168.1.100"    # Laptop IP
   zmq_port: 5555
 
 drone1:
@@ -103,9 +104,9 @@ drone2:
   zmq_identity: "DELIVERER"
 ```
 
-### 2. Mission Parameters (`config/mission_params.yaml`)
+### 2. Mission Parameters
 
-Key settings to adjust:
+Edit `config/mission_params.yaml`:
 
 ```yaml
 flight:
@@ -115,7 +116,7 @@ flight:
     hold_altitude: 25.0      # Loiter height
     
 detection:
-  model_path: "/path/to/your/weights/best.pt"
+  model_path: "/path/to/weights/best.pt"
   confidence_threshold: 0.70
   
 payload:
@@ -123,33 +124,33 @@ payload:
   drop_altitude: 10.0        # Drop height
 ```
 
-### 3. Survey Area (`config/geofence/sector_alpha.kml`)
+### 3. Survey Area
 
-Define your survey polygon in KML format (can be created with Google Earth).
+Define the survey polygon in `config/geofence/sector_alpha.kml` (can be created with Google Earth).
 
-## 🚀 Usage
+---
 
-### Test Mode (No Flight)
+## Usage
+
+### Test Mode
 
 ```bash
-# Test path planning
+# Test survey mission (no flight)
 python missions/01_survey_leader.py --test
 
-# Test delivery logic
+# Test delivery mission (no flight)
 python missions/02_delivery_follower.py --test
 ```
 
 ### Full Mission Execution
 
-#### Step 1: Start Ground Relay (Laptop)
+**Step 1: Start Ground Relay (Laptop)**
 
 ```bash
 python missions/00_ground_relay.py
 ```
 
-You'll see an interactive status display monitoring both drones.
-
-#### Step 2: Start Delivery Drone (Drone 2)
+**Step 2: Start Delivery Drone (Drone 2)**
 
 ```bash
 python missions/02_delivery_follower.py
@@ -157,31 +158,32 @@ python missions/02_delivery_follower.py
 
 Drone 2 will takeoff to holding altitude and wait for coordinates.
 
-#### Step 3: Start Survey Drone (Drone 1)
+**Step 3: Start Survey Drone (Drone 1)**
 
 ```bash
 python missions/01_survey_leader.py --kml config/geofence/sector_alpha.kml
 ```
 
-Drone 1 will:
-1. Generate sweep pattern from KML
-2. Execute survey while detecting humans
-3. Send detected coordinates to Drone 2
+Drone 1 will generate a sweep pattern, execute survey while detecting humans, and send coordinates to Drone 2.
 
-## 🔧 Running Tests
+---
+
+## Running Tests
 
 ```bash
 # Run all tests
 python -m pytest tests/ -v
 
-# Run specific test file
+# Run specific test
 python -m pytest tests/test_kml_parsing.py -v
 
 # Run with coverage
 python -m pytest tests/ --cov=src --cov-report=html
 ```
 
-## 🛡️ Safety Features
+---
+
+## Safety Features
 
 ### Battery Failsafe
 - Continuous battery monitoring
@@ -189,20 +191,22 @@ python -m pytest tests/ --cov=src --cov-report=html
 
 ### Payload Exhaustion
 - Strict count tracking
-- Immediate RTL when payload = 0
+- Immediate RTL when payload count reaches 0
 
 ### Race Condition Handling
 - FIFO queue for targets
 - Completes current drop before processing next
 
 ### Connection Loss
-- Heartbeat monitoring
+- Heartbeat monitoring (1s interval, 5s timeout)
 - Auto-reconnect attempts
 - Buffered messages
 
-## 📡 Network Architecture
+---
 
-The system uses ZeroMQ (ZMQ) for local network communication:
+## Network Architecture
+
+The system uses ZeroMQ for local communication:
 
 ```
 [Drone 1] ──DEALER──► [Relay ROUTER] ──► [Drone 2 DEALER]
@@ -212,15 +216,16 @@ The system uses ZeroMQ (ZMQ) for local network communication:
                       Status Display
 ```
 
-- **ZMQ ROUTER/DEALER**: Async bidirectional communication
-- **Heartbeat**: 1-second interval, 5-second timeout
-- **Acknowledgments**: Coordinate messages require ACK
+- ZMQ ROUTER/DEALER sockets for async bidirectional communication
+- Coordinate messages require acknowledgment
 
-## 🗺️ YOLO Model
+---
 
-The system uses your custom-trained YOLOv8 model located at:
+## YOLO Model
+
+Default model path:
 ```
-/home/dj/Projects/Nidar--2025-ELKA-/best_model/dj_yolo_best/weights/best.pt
+best_model/dj_yolo_best/weights/best.pt
 ```
 
 Detection parameters:
@@ -228,7 +233,9 @@ Detection parameters:
 - Target class: Person (ID 0)
 - Frame skip: Process every 2nd frame
 
-## 📊 Logs and Outputs
+---
+
+## Logs
 
 ```
 logs/
@@ -237,35 +244,23 @@ logs/
 └── relay_*.log           # Message relay logs
 ```
 
-## 🔍 Troubleshooting
+---
 
-### No GPS Fix
-- Ensure GPS modules have clear sky view
-- Wait for 3D fix (usually 30-60 seconds)
+## Troubleshooting
 
-### MAVLink Connection Failed
-- Check connection string in network_map.yaml
-- Verify telemetry port forwarding
-- Try: `mavlink_connection: "tcp:127.0.0.1:5760"`
-
-### YOLO Detection Not Working
-- Verify model path exists
-- Check RTSP stream URL
-- Ensure GPU/CUDA is available
-
-### ZMQ Connection Issues
-- Verify all devices on same network
-- Check firewall rules (port 5555)
-- Test with: `python -c "import zmq; print(zmq.zmq_version())"`
-
-## 📝 License
-
-MIT License - See LICENSE file for details.
-
-## 👥 Team
-
-Antigravity Core - ELKA 2025
+| Issue | Solution |
+|-------|----------|
+| No GPS Fix | Ensure GPS has clear sky view, wait 30-60s for 3D fix |
+| MAVLink Connection Failed | Check connection string in `network_map.yaml`, verify port forwarding |
+| YOLO Detection Not Working | Verify model path exists, check RTSP stream URL, ensure GPU available |
+| ZMQ Connection Issues | Verify devices on same network, check firewall (port 5555) |
 
 ---
 
-**⚠️ IMPORTANT**: Always test in simulation first. Ensure compliance with local drone regulations.
+## License
+
+MIT License - See LICENSE file for details.
+
+---
+
+**IMPORTANT**: Always test in simulation first. Ensure compliance with local drone regulations.
