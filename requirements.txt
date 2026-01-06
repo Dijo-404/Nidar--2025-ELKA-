@@ -1,31 +1,36 @@
-# Antigravity Core - Dependencies
+# Nidar - Dual-Drone Mission Control System
+# Dependencies
 
 # Core ML/Vision
-ultralytics>=8.0.0
-opencv-python>=4.8.0
-numpy>=1.24.0
+ultralytics>=8.0.0          # YOLO model (includes ByteTrack)
+opencv-python>=4.8.0        # Video processing
+numpy>=1.24.0               # Numerical operations
+
+# ByteTrack Tracking (REQUIRED for object tracking)
+lap>=0.5.12                 # Linear assignment for ByteTrack
+scipy>=1.10.0               # Scientific computing for tracking
 
 # Drone Control
-pymavlink>=2.4.0
+pymavlink>=2.4.0            # MAVLink protocol
 
 # Networking
-pyzmq>=25.0.0
+pyzmq>=25.0.0               # ZeroMQ for drone communication
 
 # Geospatial
-shapely>=2.0.0
-pyproj>=3.6.0
+shapely>=2.0.0              # Geometry operations
+pyproj>=3.6.0               # Coordinate transformations
 
 # Configuration
-pyyaml>=6.0
+pyyaml>=6.0                 # YAML config files
 
-# Image Processing (for geotagging)
-Pillow>=10.0.0
-piexif>=1.1.3
+# Image Processing
+Pillow>=10.0.0              # Image manipulation
+piexif>=1.1.3               # GPS EXIF embedding
 
 # Testing
-pytest>=7.0.0
-pytest-cov>=4.0.0
+pytest>=7.0.0               # Test framework
+pytest-cov>=4.0.0           # Coverage reporting
 
-# Optional: GUI/Visualization
-# matplotlib>=3.7.0  # Uncomment for visualization
-# folium>=0.14.0     # Uncomment for map display
+# Optional: Install for development
+# matplotlib>=3.7.0         # Visualization
+# folium>=0.14.0            # Map display

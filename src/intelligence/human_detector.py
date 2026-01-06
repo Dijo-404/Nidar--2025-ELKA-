@@ -53,6 +53,11 @@ class HumanDetector:
         self.target_class_id = self.config.get('target_class_id', 0)  # 'person'
         self.frame_skip = self.config.get('frame_skip', 2)
         
+        # Tracking parameters
+        self.use_tracking = self.config.get('use_tracking', True)
+        self.tracker = self.config.get('tracker', 'bytetrack.yaml')
+        self.tracking_available = self._check_tracking_available()
+        
         # Video stream parameters
         self.rtsp_url: Optional[str] = None
         self.frame_width = self.config.get('frame_width', 1920)
@@ -75,6 +80,16 @@ class HumanDetector:
         # Load model
         self._load_model()
     
+    def _check_tracking_available(self) -> bool:
+        """Check if ByteTrack tracking dependencies are available."""
+        try:
+            import lap
+            return True
+        except ImportError:
+            logger.warning("'lap' module not installed - tracking disabled. "
+                          "Install with: pip install lap")
+            return False
+    
     def _load_model(self):
         """Load YOLO model from specified path."""
         try:
@@ -85,13 +100,25 @@ class HumanDetector:
             logger.error(f"Failed to load YOLO model: {e}")
             raise
     
-    def detect(self, frame: np.ndarray, save_frame: bool = False) -> DetectionResult:
+    def _init_tracker(self):
+        """Initialize lightweight tracker."""
+        try:
+            from src.intelligence.simple_tracker import SimpleTracker
+            self._tracker = SimpleTracker(max_age=10, min_iou=0.3)
+            logger.info("SimpleTracker initialized for lightweight tracking")
+        except Exception as e:
+            logger.warning(f"Could not initialize tracker: {e}")
+            self._tracker = None
+    
+    def detect(self, frame: np.ndarray, save_frame: bool = False, 
+                use_tracking: bool = None) -> DetectionResult:
         """
-        Run detection on a single frame.
+        Run detection on a single frame with optional tracking.
         
         Args:
             frame: Input frame (BGR format from OpenCV)
             save_frame: Whether to include frame in result
+            use_tracking: Override tracking setting (None = use config)
             
         Returns:
             DetectionResult with detection information
@@ -104,12 +131,26 @@ class HumanDetector:
                 timestamp=time.time()
             )
         
+        # Initialize tracker on first use
+        if not hasattr(self, '_tracker'):
+            self._init_tracker()
+        
+        # Determine if we should use tracking
+        should_track = use_tracking if use_tracking is not None else self.use_tracking
+        can_track = should_track and self._tracker is not None
+        
         try:
-            # Run inference
-            results = self.model(frame, verbose=False)
+            # Run YOLO detection only (no built-in tracking overhead)
+            results = self.model(
+                frame, 
+                conf=self.confidence_threshold,
+                classes=[self.target_class_id],
+                verbose=False
+            )
             
-            # Parse results
-            boxes = []
+            # Parse detections
+            detections = []  # [x1, y1, x2, y2] format for tracker
+            boxes = []       # [x, y, w, h] format for result
             confidences = []
             
             if results[0].boxes is not None:
@@ -117,16 +158,26 @@ class HumanDetector:
                     if int(cls_id) == self.target_class_id:
                         conf = results[0].boxes.conf[i].item()
                         if conf >= self.confidence_threshold:
-                            # Get bounding box (x, y, w, h)
-                            box = results[0].boxes.xywh[i].tolist()
-                            boxes.append(box)
+                            # Get bounding box in both formats
+                            xyxy = results[0].boxes.xyxy[i].tolist()
+                            xywh = results[0].boxes.xywh[i].tolist()
+                            
+                            detections.append(xyxy)
+                            boxes.append(xywh)
                             confidences.append(conf)
+            
+            # Apply tracking if enabled
+            track_ids = []
+            if can_track and detections:
+                tracked = self._tracker.update(detections)
+                track_ids = [tid for tid, _ in tracked]
             
             detected = len(boxes) > 0
             
             if detected:
+                track_info = f", tracks: {track_ids}" if track_ids else ""
                 logger.info(f"Human detected! {len(boxes)} detections, "
-                           f"max confidence: {max(confidences):.2f}")
+                           f"max confidence: {max(confidences):.2f}{track_info}")
             
             return DetectionResult(
                 detected=detected,
@@ -145,24 +196,65 @@ class HumanDetector:
                 timestamp=time.time()
             )
     
+    def _create_video_capture(self, rtsp_url: str) -> Optional[cv2.VideoCapture]:
+        """
+        Create optimized video capture for RTSP stream.
+        
+        Uses TCP transport for reliability and minimal buffer for low latency.
+        
+        Args:
+            rtsp_url: RTSP stream URL
+            
+        Returns:
+            cv2.VideoCapture object or None
+        """
+        import os
+        
+        # Set environment to avoid Qt warnings and optimize RTSP
+        os.environ['QT_QPA_PLATFORM'] = 'xcb'
+        os.environ['OPENCV_FFMPEG_CAPTURE_OPTIONS'] = 'rtsp_transport;tcp|stimeout;5000000'
+        
+        # Try different backends
+        backends = [
+            (cv2.CAP_FFMPEG, "FFMPEG"),
+            (cv2.CAP_GSTREAMER, "GStreamer"),
+            (cv2.CAP_ANY, "Any"),
+        ]
+        
+        for backend, name in backends:
+            try:
+                cap = cv2.VideoCapture(rtsp_url, backend)
+                
+                if cap.isOpened():
+                    # Set buffer size to 1 for low latency
+                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    logger.debug(f"Opened stream with {name} backend")
+                    return cap
+            except Exception as e:
+                logger.debug(f"Backend {name} failed: {e}")
+                continue
+        
+        # Fallback to default
+        cap = cv2.VideoCapture(rtsp_url)
+        if cap.isOpened():
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        return cap
+    
     def _open_stream(self) -> bool:
-        """Open video stream connection."""
+        """Open video stream connection with optimized settings."""
         if not self.rtsp_url:
             logger.error("No RTSP URL configured")
             return False
         
         try:
             logger.info(f"Opening video stream: {self.rtsp_url}")
-            self.cap = cv2.VideoCapture(self.rtsp_url)
+            self.cap = self._create_video_capture(self.rtsp_url)
             
-            if not self.cap.isOpened():
+            if not self.cap or not self.cap.isOpened():
                 logger.error("Failed to open video stream")
                 return False
             
-            # Set buffer size to reduce latency
-            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            
-            logger.info("Video stream opened successfully")
+            logger.info("Video stream opened successfully (TCP transport, optimized)")
             return True
             
         except Exception as e:
