@@ -1,0 +1,59 @@
+# Antigravity Core Mission Parameters
+# Configuration for dual-drone survey and delivery mission
+
+# Flight Parameters
+flight:
+  survey:
+    cruise_altitude: 20.0        # meters - Drone 1 survey altitude
+    cruise_speed: 5.0            # m/s
+    loiter_radius: 10.0          # meters
+  delivery:
+    cruise_altitude: 15.0        # meters - Drone 2 delivery altitude
+    cruise_speed: 7.0            # m/s
+    approach_speed: 3.0          # m/s - slow approach to target
+    hold_altitude: 25.0          # meters - loiter altitude when idle
+
+# Path Planning
+path_planning:
+  sweep_spacing: 7.0             # meters between sweep lines
+  waypoint_interval: 10.0        # meters between waypoints
+  overlap_percentage: 30         # camera overlap percentage
+
+# Detection Parameters
+detection:
+  model_path: "/home/dj/Projects/Nidar--2025-ELKA-/best_model/dj_yolo_best/weights/best.pt"
+  confidence_threshold: 0.70     # minimum confidence for detection
+  nms_threshold: 0.45            # non-max suppression threshold
+  target_class_id: 0             # class ID for 'person'
+  frame_skip: 2                  # process every Nth frame for performance
+
+# Payload Configuration
+payload:
+  initial_count: 10              # number of payloads loaded
+  drop_altitude: 10.0            # meters above ground for drop
+  servo_channel: 9               # MAVLink servo channel
+  servo_drop_pwm: 2000           # PWM value to trigger drop
+  servo_hold_pwm: 1000           # PWM value to hold payload
+  drop_stabilize_time: 2.0       # seconds to stabilize before drop
+
+# Safety Parameters
+safety:
+  min_battery_voltage: 14.0      # volts - trigger RTL below this
+  min_battery_percent: 20        # percent - trigger RTL below this
+  max_distance_from_home: 500    # meters - geofence radius
+  failsafe_rtl_altitude: 30.0    # meters - RTL altitude
+  connection_timeout: 5.0        # seconds - max time without heartbeat
+  gps_fix_required: true         # require 3D fix before takeoff
+
+# Camera/Video Stream
+camera:
+  rtsp_url: "rtsp://192.168.144.25:8554/main.264"
+  frame_width: 1920
+  frame_height: 1080
+  reconnect_delay: 2.0           # seconds before reconnect attempt
+
+# Logging
+logging:
+  level: "INFO"                  # DEBUG, INFO, WARNING, ERROR
+  save_detections: true          # save detection snapshots
+  detection_image_quality: 85    # JPEG quality (0-100)

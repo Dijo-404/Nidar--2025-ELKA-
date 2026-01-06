@@ -1,0 +1,40 @@
+# Antigravity Core Network Configuration
+# Local network topology for drone-to-drone communication via ground relay
+
+# Ground Relay Server (Arch Linux Laptop)
+ground_relay:
+  ip: "192.168.1.100"            # Static IP of the laptop
+  zmq_port: 5555                 # ZMQ ROUTER socket port
+  status_port: 5556              # Status/monitoring port
+  heartbeat_interval: 1.0        # seconds between heartbeats
+  heartbeat_timeout: 5.0         # seconds before connection considered lost
+
+# Drone 1: The Surveyor
+drone1:
+  name: "surveyor"
+  id: "DRONE_001"
+  mavlink_connection: "udp:127.0.0.1:14550"  # Telemetry connection
+  zmq_identity: "SURVEYOR"       # ZMQ socket identity
+  
+# Drone 2: The Deliverer  
+drone2:
+  name: "deliverer"
+  id: "DRONE_002"
+  mavlink_connection: "udp:127.0.0.1:14551"  # Telemetry connection
+  zmq_identity: "DELIVERER"      # ZMQ socket identity
+
+# Message Protocol
+protocol:
+  coordinate_topic: "COORD"      # Topic for coordinate messages
+  heartbeat_topic: "HB"          # Topic for heartbeat messages
+  status_topic: "STATUS"         # Topic for status updates
+  ack_required: true             # Require acknowledgment for coordinates
+  max_retries: 3                 # Max retries for unacknowledged messages
+  retry_delay: 0.5               # seconds between retries
+
+# Network Resilience
+resilience:
+  auto_reconnect: true           # Auto-reconnect on connection loss
+  reconnect_interval: 2.0        # seconds between reconnect attempts
+  max_reconnect_attempts: 10     # Max attempts before giving up
+  buffer_size: 100               # Max messages to buffer if connection lost

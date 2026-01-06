@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Sector Alpha - Survey Area</name>
+    <description>Sample survey polygon for Antigravity mission testing</description>
+    <Style id="surveyArea">
+      <LineStyle>
+        <color>ff0000ff</color>
+        <width>2</width>
+      </LineStyle>
+      <PolyStyle>
+        <color>4d0000ff</color>
+      </PolyStyle>
+    </Style>
+    <Placemark>
+      <name>Survey Zone Alpha</name>
+      <description>Primary survey area for human detection</description>
+      <styleUrl>#surveyArea</styleUrl>
+      <Polygon>
+        <extrude>1</extrude>
+        <altitudeMode>relativeToGround</altitudeMode>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              77.5900,12.9700,0
+              77.5920,12.9700,0
+              77.5920,12.9720,0
+              77.5900,12.9720,0
+              77.5900,12.9700,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>
