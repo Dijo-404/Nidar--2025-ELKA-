@@ -1,4 +1,4 @@
-# Antigravity Core Network Configuration
+# Nidar Network Configuration
 # Local network topology for drone-to-drone communication via ground relay
 
 # Ground Relay Server (Arch Linux Laptop)
@@ -9,19 +9,30 @@ ground_relay:
   heartbeat_interval: 1.0        # seconds between heartbeats
   heartbeat_timeout: 5.0         # seconds before connection considered lost
 
+# Ground Control Station (Mission Planner)
+gcs:
+  enabled: true                  # Enable telemetry forwarding to GCS
+  ip: "192.168.1.100"            # IP where Mission Planner is running
+  drone1_port: 14560             # UDP port for Drone 1 telemetry
+  drone2_port: 14561             # UDP port for Drone 2 telemetry
+  forward_all_messages: true     # Forward all MAVLink messages
+  forward_rate_hz: 10            # Rate limit for position updates
+
 # Drone 1: The Surveyor
 drone1:
   name: "surveyor"
   id: "DRONE_001"
-  mavlink_connection: "udp:127.0.0.1:14550"  # Telemetry connection
+  mavlink_connection: "udp:127.0.0.1:14550"  # Telemetry from FC
   zmq_identity: "SURVEYOR"       # ZMQ socket identity
+  sysid: 1                       # MAVLink system ID
   
 # Drone 2: The Deliverer  
 drone2:
   name: "deliverer"
   id: "DRONE_002"
-  mavlink_connection: "udp:127.0.0.1:14551"  # Telemetry connection
+  mavlink_connection: "udp:127.0.0.1:14551"  # Telemetry from FC
   zmq_identity: "DELIVERER"      # ZMQ socket identity
+  sysid: 2                       # MAVLink system ID
 
 # Message Protocol
 protocol:
@@ -38,3 +49,4 @@ resilience:
   reconnect_interval: 2.0        # seconds between reconnect attempts
   max_reconnect_attempts: 10     # Max attempts before giving up
   buffer_size: 100               # Max messages to buffer if connection lost
+

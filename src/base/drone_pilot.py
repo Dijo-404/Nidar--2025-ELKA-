@@ -3,11 +3,13 @@ DronePilot - MAVLink Wrapper for Safe Flight Operations
 
 This module provides a high-level abstraction over MAVLink commands,
 implementing safety checks and failsafe mechanisms for drone control.
+Includes telemetry forwarding to GCS (Mission Planner).
 """
 
 import time
 import logging
-from typing import Optional, Tuple
+import threading
+from typing import Optional, Tuple, Callable
 from pymavlink import mavutil
 
 logger = logging.getLogger(__name__)
@@ -19,18 +21,22 @@ class DronePilot:
     
     Provides methods for arming, takeoff, navigation, and emergency procedures
     with built-in safety checks and failsafe mechanisms.
+    Supports telemetry forwarding to GCS for mission monitoring.
     """
     
-    def __init__(self, connection_string: str, config: dict = None):
+    def __init__(self, connection_string: str, config: dict = None, 
+                 gcs_config: dict = None):
         """
         Initialize DronePilot with MAVLink connection.
         
         Args:
             connection_string: MAVLink connection string (e.g., 'udp:127.0.0.1:14550')
             config: Optional configuration dictionary with safety parameters
+            gcs_config: Optional GCS configuration for telemetry forwarding
         """
         self.connection_string = connection_string
         self.config = config or {}
+        self.gcs_config = gcs_config or {}
         self.mav: Optional[mavutil.mavlink_connection] = None
         self.is_armed = False
         self.home_position: Optional[Tuple[float, float, float]] = None
@@ -42,9 +48,18 @@ class DronePilot:
         self.failsafe_rtl_altitude = self.config.get('failsafe_rtl_altitude', 30.0)
         self.connection_timeout = self.config.get('connection_timeout', 5.0)
         
-    def connect(self) -> bool:
+        # GCS telemetry forwarding
+        self.gcs_forwarder = None
+        self.gcs_forward_thread: Optional[threading.Thread] = None
+        self.gcs_forward_running = False
+        self.drone_id = self.config.get('drone_id', 'drone')
+        
+    def connect(self, enable_gcs_forward: bool = True) -> bool:
         """
         Establish MAVLink connection to the flight controller.
+        
+        Args:
+            enable_gcs_forward: Enable telemetry forwarding to GCS
         
         Returns:
             True if connection successful, False otherwise
@@ -58,6 +73,11 @@ class DronePilot:
             if msg:
                 logger.info(f"Connected to system {self.mav.target_system}, "
                            f"component {self.mav.target_component}")
+                
+                # Setup GCS forwarding if configured
+                if enable_gcs_forward and self.gcs_config.get('enabled', False):
+                    self._setup_gcs_forwarding()
+                
                 return True
             else:
                 logger.error("No heartbeat received")
@@ -67,8 +87,54 @@ class DronePilot:
             logger.error(f"Connection failed: {e}")
             return False
     
+    def _setup_gcs_forwarding(self):
+        """Setup telemetry forwarding to GCS."""
+        try:
+            from src.comms.telemetry_forwarder import TelemetryForwarder
+            
+            gcs_ip = self.gcs_config.get('ip', '127.0.0.1')
+            gcs_port = self.gcs_config.get('port', 14560)
+            
+            self.gcs_forwarder = TelemetryForwarder(self.gcs_config)
+            self.gcs_forwarder.add_drone(self.drone_id, gcs_port)
+            
+            # Start forwarding thread
+            self.gcs_forward_running = True
+            self.gcs_forward_thread = threading.Thread(
+                target=self._gcs_forward_loop,
+                daemon=True,
+                name=f"GCS-Forward-{self.drone_id}"
+            )
+            self.gcs_forward_thread.start()
+            
+            logger.info(f"GCS telemetry forwarding enabled -> {gcs_ip}:{gcs_port}")
+            
+        except Exception as e:
+            logger.warning(f"Could not setup GCS forwarding: {e}")
+    
+    def _gcs_forward_loop(self):
+        """Forward incoming MAVLink messages to GCS."""
+        while self.gcs_forward_running and self.mav:
+            try:
+                # Non-blocking receive
+                msg = self.mav.recv_match(blocking=False)
+                if msg and self.gcs_forwarder:
+                    self.gcs_forwarder.forward_message(self.drone_id, msg)
+            except:
+                pass
+            time.sleep(0.001)  # 1ms loop
+    
     def disconnect(self):
-        """Close MAVLink connection."""
+        """Close MAVLink connection and stop forwarding."""
+        # Stop GCS forwarding
+        self.gcs_forward_running = False
+        if self.gcs_forward_thread and self.gcs_forward_thread.is_alive():
+            self.gcs_forward_thread.join(timeout=2)
+        if self.gcs_forwarder:
+            self.gcs_forwarder.close()
+            self.gcs_forwarder = None
+        
+        # Close MAVLink
         if self.mav:
             self.mav.close()
             self.mav = None

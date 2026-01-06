@@ -128,6 +128,28 @@ payload:
 
 Define the survey polygon in `config/geofence/sector_alpha.kml` (can be created with Google Earth).
 
+### 4. GCS Monitoring (Mission Planner)
+
+To monitor missions in Mission Planner, configure telemetry forwarding in `config/network_map.yaml`:
+
+```yaml
+gcs:
+  enabled: true                  # Enable telemetry forwarding
+  ip: "192.168.1.100"            # IP where Mission Planner is running
+  drone1_port: 14560             # UDP port for Drone 1 telemetry
+  drone2_port: 14561             # UDP port for Drone 2 telemetry
+```
+
+**Mission Planner Setup:**
+
+1. Open Mission Planner
+2. Go to **Connection** dropdown
+3. Select **UDP**
+4. Set port to **14560** (for Drone 1) or **14561** (for Drone 2)
+5. Click **Connect**
+
+You can open multiple Mission Planner instances to monitor both drones simultaneously.
+
 ---
 
 ## Usage
