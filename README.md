@@ -8,26 +8,26 @@ A locally-networked system for coordinating two drones: one surveys an area usin
 
 ```mermaid
 flowchart TB
-    subgraph DRONE1["🛸 DRONE 1: SURVEYOR"]
-        D1A["📍 KML Path Planning"]
-        D1B["🔍 YOLO Detection"]
-        D1C["📡 GPS Geotagging"]
+    subgraph DRONE1["DRONE 1: SURVEYOR"]
+        D1A["KML Path Planning"]
+        D1B["YOLO Detection"]
+        D1C["GPS Geotagging"]
     end
     
-    subgraph RELAY["💻 GROUND RELAY"]
-        R1["📨 Message Router"]
-        R2["📊 Status Monitor"]
-        R3["📝 Logging"]
+    subgraph RELAY["GROUND RELAY"]
+        R1["Message Router"]
+        R2["Status Monitor"]
+        R3["Logging"]
     end
     
-    subgraph DRONE2["🛸 DRONE 2: DELIVERER"]
-        D2A["📥 Target Queue"]
-        D2B["🎯 Navigation"]
-        D2C["📦 Payload Drop"]
+    subgraph DRONE2["DRONE 2: DELIVERER"]
+        D2A["Target Queue"]
+        D2B["Navigation"]
+        D2C["Payload Drop"]
     end
     
-    DRONE1 <-->|"ZMQ\nTCP/5555"| RELAY
-    RELAY <-->|"ZMQ\nTCP/5555"| DRONE2
+    DRONE1 <-->|"ZMQ TCP/5555"| RELAY
+    RELAY <-->|"ZMQ TCP/5555"| DRONE2
     
     D1C -->|"GPS Coordinates"| R1
     R1 -->|"Target Location"| D2A
