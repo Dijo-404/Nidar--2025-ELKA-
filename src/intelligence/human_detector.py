@@ -162,9 +162,11 @@ class HumanDetector:
             cv2.VideoCapture object or None
         """
         import os
+        import platform
         
-        # Set environment to avoid Qt warnings and optimize RTSP
-        os.environ['QT_QPA_PLATFORM'] = 'xcb'
+        # Set environment for RTSP optimization (Linux-specific Qt setting)
+        if platform.system() == 'Linux':
+            os.environ['QT_QPA_PLATFORM'] = 'xcb'
         os.environ['OPENCV_FFMPEG_CAPTURE_OPTIONS'] = 'rtsp_transport;tcp|stimeout;5000000'
         
         # Try different backends

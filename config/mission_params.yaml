@@ -21,7 +21,7 @@ path_planning:
 
 # Detection Parameters
 detection:
-  model_path: "/home/dj/Projects/Nidar--2025-ELKA-/best_model/dj_yolo_best/weights/best.pt"
+  model_path: "best_model/dj_yolo_best/weights/best.pt"  # Relative to project root
   confidence_threshold: 0.70     # minimum confidence for detection
   nms_threshold: 0.45            # non-max suppression threshold
   target_class_id: 0             # class ID for 'person'

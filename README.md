@@ -88,12 +88,31 @@ Nidar--2025-ELKA-/
 - MAVLink-compatible flight controllers (ArduPilot/PX4)
 - Local WiFi network
 
-### Setup
+### Setup (Linux)
 
 ```bash
+# Clone repository
+git clone https://github.com/your-repo/Nidar--2025-ELKA-.git
+cd Nidar--2025-ELKA-
+
 # Create virtual environment
 python -m venv venv
 source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Setup (Windows)
+
+```powershell
+# Clone repository
+git clone https://github.com/your-repo/Nidar--2025-ELKA-.git
+cd Nidar--2025-ELKA-
+
+# Create virtual environment
+python -m venv venv
+.\venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt

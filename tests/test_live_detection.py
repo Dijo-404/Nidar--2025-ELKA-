@@ -91,8 +91,10 @@ def create_video_capture(rtsp_url: str, use_tcp: bool = True):
     Returns:
         cv2.VideoCapture object or None
     """
-    # Set environment to avoid Qt warnings
-    os.environ['QT_QPA_PLATFORM'] = 'xcb'
+    # Set environment for RTSP optimization (Linux-specific Qt setting)
+    import platform
+    if platform.system() == 'Linux':
+        os.environ['QT_QPA_PLATFORM'] = 'xcb'
     os.environ['OPENCV_FFMPEG_CAPTURE_OPTIONS'] = 'rtsp_transport;tcp|stimeout;5000000'
     
     # Try different backends
@@ -485,6 +487,11 @@ def main():
     rtsp_url = args.rtsp or mission_config.get('camera', {}).get('rtsp_url', '')
     mavlink_conn = args.mavlink or network_config.get('drone1', {}).get('mavlink_connection', '')
     model_path = args.model or mission_config.get('detection', {}).get('model_path', '')
+    
+    # Resolve relative model path to absolute (based on project root)
+    if model_path and not os.path.isabs(model_path):
+        project_root = Path(__file__).parent.parent
+        model_path = str(project_root / model_path)
     
     print("="*60)
     print("NIDAR - Live Detection Test")
