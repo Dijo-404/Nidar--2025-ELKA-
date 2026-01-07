@@ -2,13 +2,10 @@
 # Dependencies
 
 # Core ML/Vision
-ultralytics>=8.0.0          # YOLO model (includes ByteTrack)
+ultralytics>=8.0.0          # YOLO model
 opencv-python>=4.8.0        # Video processing
 numpy>=1.24.0               # Numerical operations
-
-# ByteTrack Tracking (REQUIRED for object tracking)
-lap>=0.5.12                 # Linear assignment for ByteTrack
-scipy>=1.10.0               # Scientific computing for tracking
+scipy>=1.10.0               # Scientific computing
 
 # Drone Control
 pymavlink>=2.4.0            # MAVLink protocol

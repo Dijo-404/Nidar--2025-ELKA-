@@ -40,11 +40,13 @@ Nidar--2025-ELKA-/
 │   │
 │   ├── intelligence/           # Decision making
 │   │   ├── path_finder.py      # KML to waypoints conversion
-│   │   └── human_detector.py   # YOLO detection
+│   │   ├── human_detector.py   # YOLO detection
+│   │   └── geotagging.py       # GSD-based GPS coordinate calculation
 │   │
 │   ├── comms/                  # Networking
 │   │   ├── bridge_client.py    # Drone ZMQ client
-│   │   └── relay_server.py     # Ground station server
+│   │   ├── relay_server.py     # Ground station server
+│   │   └── telemetry_forwarder.py # MAVLink GCS forwarding
 │   │
 │   └── utils/                  # Helpers
 │       ├── geo_math.py         # Geospatial calculations
@@ -56,6 +58,9 @@ Nidar--2025-ELKA-/
 │   └── 02_delivery_follower.py # Drone 2 mission
 │
 ├── tests/                      # Test suite
+│   ├── test_live_detection.py  # Live camera detection test
+│   ├── test_geotagging.py      # Geotagging unit tests
+│   └── ...                     # Other tests
 ├── logs/                       # Auto-generated logs
 └── requirements.txt            # Dependencies
 ```
@@ -124,7 +129,22 @@ payload:
   drop_altitude: 10.0        # Drop height
 ```
 
-### 3. Survey Area
+### 3. Camera & Geotagging
+
+Configure camera calibration for accurate GPS coordinate calculation:
+
+```yaml
+camera:
+  rtsp_url: "rtsp://192.168.144.25:8554/main.264"
+  frame_width: 1920
+  frame_height: 1080
+  # Geotagging calibration
+  sensor_width_mm: 7.6      # Camera sensor width
+  focal_length_mm: 4.4      # Camera focal length
+  gimbal_pitch_deg: 90      # 90 = straight down (nadir)
+```
+
+### 4. Survey Area
 
 Define the survey polygon in `config/geofence/sector_alpha.kml` (can be created with Google Earth).
 
@@ -152,41 +172,73 @@ You can open multiple Mission Planner instances to monitor both drones simultane
 
 ---
 
-## Usage
+## Quick Start Guide
 
-### Test Mode
+### Step 1: Install Dependencies
 
 ```bash
-# Test survey mission (no flight)
+cd /path/to/Nidar--2025-ELKA-
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Step 2: Configure Network
+
+Edit `config/network_map.yaml` with your network IPs.
+
+### Step 3: Test Detection (Recommended First)
+
+```bash
+# Test live detection with camera (no drone needed)
+python tests/test_live_detection.py --no-mavlink
+
+# Test with drone connection
+python tests/test_live_detection.py
+```
+
+Press `q` to quit, `s` to save frame, `t` to toggle tracking.
+
+### Step 4: Run Unit Tests
+
+```bash
+# Test geotagging calculations
+python tests/test_geotagging.py
+
+# Run all tests
+python -m pytest tests/ -v
+```
+
+---
+
+## Mission Execution
+
+### Test Mode (No Flight)
+
+```bash
+# Test survey mission
 python missions/01_survey_leader.py --test
 
-# Test delivery mission (no flight)
+# Test delivery mission
 python missions/02_delivery_follower.py --test
 ```
 
-### Full Mission Execution
+### Full Mission
 
-**Step 1: Start Ground Relay (Laptop)**
-
+**Terminal 1 - Ground Relay:**
 ```bash
 python missions/00_ground_relay.py
 ```
 
-**Step 2: Start Delivery Drone (Drone 2)**
-
+**Terminal 2 - Delivery Drone:**
 ```bash
 python missions/02_delivery_follower.py
 ```
 
-Drone 2 will takeoff to holding altitude and wait for coordinates.
-
-**Step 3: Start Survey Drone (Drone 1)**
-
+**Terminal 3 - Survey Drone:**
 ```bash
 python missions/01_survey_leader.py --kml config/geofence/sector_alpha.kml
 ```
-
-Drone 1 will generate a sweep pattern, execute survey while detecting humans, and send coordinates to Drone 2.
 
 ---
 
@@ -240,6 +292,35 @@ The system uses ZeroMQ for local communication:
 
 - ZMQ ROUTER/DEALER sockets for async bidirectional communication
 - Coordinate messages require acknowledgment
+
+---
+
+## Geotagging
+
+The geotagging module converts detected object positions to GPS coordinates:
+
+```python
+from src.intelligence.geotagging import GeoTagger
+
+# Initialize with camera config
+geotagger = GeoTagger(camera_config)
+
+# Compute target GPS from detection
+result = geotagger.geotag_detection(
+    box_xywh=[960, 540, 100, 200],  # Detection center & size
+    confidence=0.9,
+    drone_lat=12.97, drone_lon=77.59, drone_alt=20.0,
+    drone_heading=45.0  # Heading compensation
+)
+
+print(f"Target: ({result.target_lat:.6f}, {result.target_lon:.6f})")
+print(f"GSD: {result.gsd_m:.4f} m/px")
+```
+
+**Key features:**
+- GSD (Ground Sample Distance) calculation
+- Drone heading compensation for accurate N/E mapping
+- WGS84-aware coordinate conversion
 
 ---
 

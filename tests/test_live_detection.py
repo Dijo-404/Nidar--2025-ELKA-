@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
-Test Live Detection with ByteTrack - Stable bounding boxes with object tracking
+Test Live Detection - YOLO Human Detection with Geotagging
 
-This script tests the complete detection pipeline with tracking:
+This script tests the complete detection pipeline:
 1. Connect to drone via MAVLink (optional)
 2. Connect to SIYI camera via RTSP
-3. Run YOLO model with ByteTrack for stable tracking
-4. Display smooth, stable bounding boxes with track IDs
-5. Show GPS coordinates when human detected
+3. Run YOLO model for human detection
+4. Show GPS coordinates when human detected (with geotagging)
 
 Usage:
     python test_live_detection.py [--no-mavlink] [--rtsp URL] [--save]
@@ -24,7 +23,6 @@ import cv2
 import yaml
 import numpy as np
 from pathlib import Path
-from collections import defaultdict
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -42,32 +40,15 @@ def signal_handler(signum, frame):
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
-# Check for required dependencies
-TRACKING_AVAILABLE = True
-USE_SIMPLE_TRACKER = True  # Use lightweight tracker instead of ByteTrack
 
 def check_dependencies():
     """Check if all required dependencies are installed."""
-    global TRACKING_AVAILABLE, USE_SIMPLE_TRACKER
     missing = []
-    
-    try:
-        import scipy
-    except ImportError:
-        missing.append("scipy")
-        TRACKING_AVAILABLE = False
     
     try:
         from ultralytics import YOLO
     except ImportError:
         missing.append("ultralytics")
-    
-    # Check for ByteTrack (optional)
-    try:
-        import lap
-        USE_SIMPLE_TRACKER = False  # ByteTrack available, but we still prefer simple
-    except ImportError:
-        USE_SIMPLE_TRACKER = True
     
     if missing:
         print("="*60)
@@ -77,11 +58,7 @@ def check_dependencies():
         print(f"\n  Install with:")
         print(f"    pip install {' '.join(missing)}")
         print("="*60)
-        
-        if "ultralytics" in missing:
-            sys.exit(1)
-    
-    print(f"  Tracker: {'Simple (lightweight)' if USE_SIMPLE_TRACKER else 'ByteTrack'}")
+        sys.exit(1)
 
 check_dependencies()
 
@@ -101,46 +78,6 @@ def load_config():
     except Exception as e:
         print(f"[ERROR] Failed to load config: {e}")
         return {}, {}
-
-
-class BoundingBoxSmoother:
-    """Smooths bounding boxes over time for stable display."""
-    
-    def __init__(self, smoothing_factor: float = 0.7):
-        self.smoothing_factor = smoothing_factor
-        self.tracked_boxes = {}
-        self.last_seen = {}
-        self.max_age = 30
-    
-    def update(self, track_id: int, box: list, frame_num: int) -> list:
-        """Update and return smoothed bounding box."""
-        try:
-            box = np.array(box, dtype=np.float32)
-            
-            if track_id in self.tracked_boxes:
-                prev_box = self.tracked_boxes[track_id]
-                smoothed = self.smoothing_factor * prev_box + (1 - self.smoothing_factor) * box
-            else:
-                smoothed = box
-            
-            self.tracked_boxes[track_id] = smoothed
-            self.last_seen[track_id] = frame_num
-            self._cleanup(frame_num)
-            
-            return smoothed.astype(int).tolist()
-        except Exception:
-            return [int(x) for x in box]
-    
-    def _cleanup(self, current_frame: int):
-        """Remove tracks not seen recently."""
-        try:
-            expired = [tid for tid, last in self.last_seen.items() 
-                       if current_frame - last > self.max_age]
-            for tid in expired:
-                del self.tracked_boxes[tid]
-                del self.last_seen[tid]
-        except Exception:
-            pass
 
 
 def create_video_capture(rtsp_url: str, use_tcp: bool = True):
@@ -167,11 +104,7 @@ def create_video_capture(rtsp_url: str, use_tcp: bool = True):
     
     for backend, name in backends:
         try:
-            if use_tcp and backend == cv2.CAP_FFMPEG:
-                # Use TCP transport for RTSP (more reliable)
-                cap = cv2.VideoCapture(rtsp_url, backend)
-            else:
-                cap = cv2.VideoCapture(rtsp_url, backend)
+            cap = cv2.VideoCapture(rtsp_url, backend)
             
             if cap.isOpened():
                 # Set buffer size to 1 for low latency
@@ -274,23 +207,24 @@ def test_yolo_model(model_path: str):
         return None
 
 
-def get_track_color(track_id: int) -> tuple:
-    """Get consistent color for a track ID."""
+def get_detection_color(index: int) -> tuple:
+    """Get consistent color for detection index."""
     colors = [
         (0, 255, 0), (255, 0, 0), (0, 255, 255), (255, 0, 255),
         (0, 165, 255), (255, 255, 0), (128, 0, 128), (0, 128, 128),
     ]
-    return colors[int(track_id) % len(colors)]
+    return colors[index % len(colors)]
 
 
-def run_live_detection(rtsp_url: str, model, mavlink_conn=None, 
-                       save_detections: bool = False, confidence: float = 0.7):
-    """Run live detection with ByteTrack tracking on RTSP stream."""
+def run_live_detection(rtsp_url: str, model, mission_config: dict,
+                       mavlink_conn=None, save_detections: bool = False, 
+                       confidence: float = 0.7):
+    """Run live detection on RTSP stream."""
     global SHUTDOWN_REQUESTED
     
     print("\n" + "="*60)
-    print("LIVE DETECTION" + (" WITH BYTETRACK" if TRACKING_AVAILABLE else " (NO TRACKING)"))
-    print("Press 'q' to quit, 's' to save frame, 't' to toggle tracking")
+    print("LIVE DETECTION")
+    print("Press 'q' to quit, 's' to save frame")
     print("="*60 + "\n")
     
     cap = None
@@ -309,31 +243,19 @@ def run_live_detection(rtsp_url: str, model, mavlink_conn=None,
         output_dir = Path(__file__).parent.parent / 'logs' / 'detections'
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Initialize smoother for stable bounding boxes
-        smoother = BoundingBoxSmoother(smoothing_factor=0.6)
-        
-        # Initialize lightweight tracker
-        from src.intelligence.simple_tracker import SimpleTracker
-        from src.intelligence.geotagging import GeoTagger
-        tracker = SimpleTracker(max_age=10, min_iou=0.3)
-        
         # Initialize GeoTagger with camera config
+        from src.intelligence.geotagging import GeoTagger
         camera_config = mission_config.get('camera', {})
         geotagger = GeoTagger(camera_config)
         print(f"[INFO] GeoTagger initialized (GSD-based geotagging enabled)")
         
-        # Track history for drawing trails
-        track_history = defaultdict(lambda: [])
-        
         frame_count = 0
         detection_count = 0
-        unique_tracks = set()
         fps_start = time.time()
         fps = 0
-        use_tracking = TRACKING_AVAILABLE
         reconnect_attempts = 0
         max_reconnect_attempts = 5
-        current_heading = 0.0  # Drone heading in degrees
+        current_heading = 0.0
         
         # MAVLink connection for GPS
         if mavlink_conn:
@@ -346,7 +268,7 @@ def run_live_detection(rtsp_url: str, model, mavlink_conn=None,
                 print(f"[WARN] MAVLink connection failed: {e}")
                 mav = None
         
-        print("[INFO] Starting detection loop (SimpleTracker enabled)...")
+        print("[INFO] Starting detection loop...")
         
         while not SHUTDOWN_REQUESTED:
             # Read frame
@@ -388,22 +310,19 @@ def run_live_detection(rtsp_url: str, model, mavlink_conn=None,
                 fps = 30 / elapsed if elapsed > 0 else 0
                 fps_start = time.time()
             
-            # Run detection (always use simple detection, tracking is done separately)
+            # Run detection
             human_detected = False
             current_gps = None
+            target_gps = None
             
             try:
-                # Run YOLO detection only (no built-in tracking)
+                # Run YOLO detection
                 results = model(frame, conf=confidence, classes=[0], verbose=False)
-            except Exception as e:
-                print(f"[WARN] Detection error: {e}")
-                continue
-            
-            # Collect detections for tracking
-            detections = []
-            det_confs = []
-            
-            try:
+                
+                # Collect detections
+                detections = []
+                det_confs = []
+                
                 for result in results:
                     if result.boxes is not None and len(result.boxes) > 0:
                         boxes = result.boxes.xyxy.cpu().numpy()
@@ -414,40 +333,21 @@ def run_live_detection(rtsp_url: str, model, mavlink_conn=None,
                                 detections.append(box.tolist())
                                 det_confs.append(conf)
                 
-                # Update tracker with detections
-                tracked_objects = tracker.update(detections) if use_tracking else []
-                
-                # If no tracking, create fake track IDs
-                if not tracked_objects and detections:
-                    tracked_objects = [(i, det) for i, det in enumerate(detections)]
-                
-                # Process tracked objects
-                for track_id, box in tracked_objects:
+                # Process detections
+                for i, box in enumerate(detections):
                     human_detected = True
                     detection_count += 1
-                    unique_tracks.add(int(track_id))
                     
                     x1, y1, x2, y2 = [int(v) for v in box[:4]]
+                    conf = det_confs[i] if i < len(det_confs) else 0.7
                     
-                    # Smooth the bounding box
-                    if use_tracking:
-                        smoothed = smoother.update(
-                            int(track_id), 
-                            [x1, y1, x2, y2], 
-                            frame_count
-                        )
-                        x1, y1, x2, y2 = smoothed
-                    
-                    # Get confidence for this detection
-                    conf = det_confs[0] if det_confs else 0.7
-                    
-                    color = get_track_color(track_id)
+                    color = get_detection_color(i)
                     
                     # Draw bounding box
                     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                     
                     # Draw label
-                    label = f"ID:{int(track_id)} {conf:.0%}"
+                    label = f"Human {conf:.0%}"
                     (label_w, label_h), _ = cv2.getTextSize(
                         label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
                     )
@@ -455,24 +355,11 @@ def run_live_detection(rtsp_url: str, model, mavlink_conn=None,
                                 (x1+label_w+10, y1), color, -1)
                     cv2.putText(frame, label, (x1+5, y1-5),
                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                    
-                    # Track trail
-                    if use_tracking:
-                        center_x = int((x1 + x2) / 2)
-                        center_y = int(y2)
-                        track_history[int(track_id)].append((center_x, center_y))
-                        
-                        if len(track_history[int(track_id)]) > 30:
-                            track_history[int(track_id)].pop(0)
-                        
-                        if len(track_history[int(track_id)]) > 1:
-                            points = np.array(track_history[int(track_id)], dtype=np.int32)
-                            cv2.polylines(frame, [points], False, color, 2)
+            
             except Exception as e:
                 print(f"[WARN] Processing error: {e}")
             
             # Get GPS and heading when human detected
-            target_gps = None
             if human_detected and mav:
                 try:
                     gps_msg = mav.recv_match(type='GLOBAL_POSITION_INT', blocking=False)
@@ -485,7 +372,6 @@ def run_live_detection(rtsp_url: str, model, mavlink_conn=None,
                         
                         # Compute target GPS using GeoTagger
                         if detections and current_gps:
-                            # Use first detection for target GPS
                             box = detections[0]
                             center_x = (box[0] + box[2]) / 2
                             center_y = (box[1] + box[3]) / 2
@@ -507,21 +393,14 @@ def run_live_detection(rtsp_url: str, model, mavlink_conn=None,
             
             # Draw status panel
             try:
-                panel_height = 100
-                cv2.rectangle(frame, (0, 0), (300, panel_height), (0, 0, 0), -1)
-                cv2.rectangle(frame, (0, 0), (300, panel_height), (100, 100, 100), 2)
+                panel_height = 80
+                cv2.rectangle(frame, (0, 0), (250, panel_height), (0, 0, 0), -1)
+                cv2.rectangle(frame, (0, 0), (250, panel_height), (100, 100, 100), 2)
                 
                 cv2.putText(frame, f"FPS: {fps:.1f}", (10, 25),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
                 
-                tracking_text = "ON" if can_track else "OFF"
-                tracking_color = (0, 255, 0) if can_track else (0, 0, 255)
-                cv2.putText(frame, f"Track: {tracking_text}", (120, 25),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, tracking_color, 2)
-                
                 cv2.putText(frame, f"Detections: {detection_count}", (10, 50),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                cv2.putText(frame, f"Unique: {len(unique_tracks)}", (10, 75),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
                 
                 if current_gps:
@@ -555,11 +434,6 @@ def run_live_detection(rtsp_url: str, model, mavlink_conn=None,
                     print(f"[INFO] Saved: {filename}")
                 except Exception as e:
                     print(f"[ERROR] Save failed: {e}")
-            elif key == ord('t') and TRACKING_AVAILABLE:
-                use_tracking = not use_tracking
-                print(f"[INFO] Tracking: {'ON' if use_tracking else 'OFF'}")
-                track_history.clear()
-                smoother = BoundingBoxSmoother(smoothing_factor=0.6)
     
     except Exception as e:
         print(f"[ERROR] Unexpected error: {e}")
@@ -590,11 +464,10 @@ def run_live_detection(rtsp_url: str, model, mavlink_conn=None,
         print(f"\nSession complete:")
         print(f"  Total frames: {frame_count}")
         print(f"  Total detections: {detection_count}")
-        print(f"  Unique tracks: {len(unique_tracks)}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Test live detection with ByteTrack")
+    parser = argparse.ArgumentParser(description="Test live detection")
     parser.add_argument('--rtsp', help='RTSP URL (default: from config)')
     parser.add_argument('--mavlink', help='MAVLink connection string')
     parser.add_argument('--no-mavlink', action='store_true', help='Skip MAVLink')
@@ -620,7 +493,6 @@ def main():
     print(f"MAVLink: {mavlink_conn}")
     print(f"Model: {model_path}")
     print(f"Confidence: {args.confidence}")
-    print(f"Tracking: {'Available' if TRACKING_AVAILABLE else 'Not available (install lap)'}")
     
     # Test connections
     rtsp_ok = test_rtsp_connection(rtsp_url)
@@ -647,6 +519,7 @@ def main():
         run_live_detection(
             rtsp_url, 
             model, 
+            mission_config,
             mavlink_conn=mavlink_conn if not args.no_mavlink else None,
             save_detections=args.save,
             confidence=args.confidence

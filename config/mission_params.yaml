@@ -26,10 +26,6 @@ detection:
   nms_threshold: 0.45            # non-max suppression threshold
   target_class_id: 0             # class ID for 'person'
   frame_skip: 2                  # process every Nth frame for performance
-  # ByteTrack settings
-  use_tracking: true             # enable ByteTrack object tracking
-  tracker: "bytetrack.yaml"      # tracker config file
-  box_smoothing: 0.6             # bounding box smoothing factor (0-1)
 
 # Payload Configuration
 payload:

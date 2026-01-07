@@ -5,7 +5,6 @@ Decision making modules for path planning and human detection.
 Modules:
     - path_finder: KML parsing and waypoint generation
     - human_detector: YOLO-based human detection
-    - simple_tracker: Lightweight object tracking
     - geotagging: GSD-based detection coordinate calculation
 """
 
@@ -18,12 +17,6 @@ def __getattr__(name):
     elif name == "HumanDetector":
         from .human_detector import HumanDetector
         return HumanDetector
-    elif name == "SimpleTracker":
-        from .simple_tracker import SimpleTracker
-        return SimpleTracker
-    elif name == "CentroidTracker":
-        from .simple_tracker import CentroidTracker
-        return CentroidTracker
     elif name == "GeoTagger":
         from .geotagging import GeoTagger
         return GeoTagger
@@ -32,4 +25,5 @@ def __getattr__(name):
         return GeoTaggedDetection
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-__all__ = ["PathFinder", "HumanDetector", "SimpleTracker", "CentroidTracker", "GeoTagger", "GeoTaggedDetection"]
+__all__ = ["PathFinder", "HumanDetector", "GeoTagger", "GeoTaggedDetection"]
+
