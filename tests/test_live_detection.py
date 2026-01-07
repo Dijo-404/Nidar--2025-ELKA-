@@ -314,7 +314,13 @@ def run_live_detection(rtsp_url: str, model, mavlink_conn=None,
         
         # Initialize lightweight tracker
         from src.intelligence.simple_tracker import SimpleTracker
+        from src.intelligence.geotagging import GeoTagger
         tracker = SimpleTracker(max_age=10, min_iou=0.3)
+        
+        # Initialize GeoTagger with camera config
+        camera_config = mission_config.get('camera', {})
+        geotagger = GeoTagger(camera_config)
+        print(f"[INFO] GeoTagger initialized (GSD-based geotagging enabled)")
         
         # Track history for drawing trails
         track_history = defaultdict(lambda: [])
@@ -327,6 +333,7 @@ def run_live_detection(rtsp_url: str, model, mavlink_conn=None,
         use_tracking = TRACKING_AVAILABLE
         reconnect_attempts = 0
         max_reconnect_attempts = 5
+        current_heading = 0.0  # Drone heading in degrees
         
         # MAVLink connection for GPS
         if mavlink_conn:
@@ -464,7 +471,8 @@ def run_live_detection(rtsp_url: str, model, mavlink_conn=None,
             except Exception as e:
                 print(f"[WARN] Processing error: {e}")
             
-            # Get GPS when human detected
+            # Get GPS and heading when human detected
+            target_gps = None
             if human_detected and mav:
                 try:
                     gps_msg = mav.recv_match(type='GLOBAL_POSITION_INT', blocking=False)
@@ -473,6 +481,27 @@ def run_live_detection(rtsp_url: str, model, mavlink_conn=None,
                         lon = gps_msg.lon / 1e7
                         alt = gps_msg.relative_alt / 1000.0
                         current_gps = (lat, lon, alt)
+                        current_heading = gps_msg.hdg / 100.0 if gps_msg.hdg != 65535 else current_heading
+                        
+                        # Compute target GPS using GeoTagger
+                        if detections and current_gps:
+                            # Use first detection for target GPS
+                            box = detections[0]
+                            center_x = (box[0] + box[2]) / 2
+                            center_y = (box[1] + box[3]) / 2
+                            width = box[2] - box[0]
+                            height = box[3] - box[1]
+                            
+                            geotagged = geotagger.geotag_detection(
+                                box_xywh=[center_x, center_y, width, height],
+                                confidence=det_confs[0] if det_confs else 0.7,
+                                drone_lat=lat,
+                                drone_lon=lon,
+                                drone_alt=alt,
+                                drone_heading=current_heading
+                            )
+                            if geotagged.target_lat and geotagged.target_lon:
+                                target_gps = (geotagged.target_lat, geotagged.target_lon, geotagged.gsd_m)
                 except:
                     pass
             
@@ -496,9 +525,14 @@ def run_live_detection(rtsp_url: str, model, mavlink_conn=None,
                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
                 
                 if current_gps:
-                    gps_text = f"GPS: {current_gps[0]:.6f}, {current_gps[1]:.6f}"
-                    cv2.putText(frame, gps_text, (10, frame.shape[0]-10),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+                    gps_text = f"Drone: {current_gps[0]:.6f}, {current_gps[1]:.6f}"
+                    cv2.putText(frame, gps_text, (10, frame.shape[0]-35),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+                
+                if target_gps:
+                    target_text = f"Target: {target_gps[0]:.6f}, {target_gps[1]:.6f} (GSD:{target_gps[2]:.3f}m)"
+                    cv2.putText(frame, target_text, (10, frame.shape[0]-10),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             except Exception:
                 pass
             

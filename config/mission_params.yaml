@@ -55,6 +55,10 @@ camera:
   frame_width: 1920
   frame_height: 1080
   reconnect_delay: 2.0           # seconds before reconnect attempt
+  # Geotagging calibration (for GSD-based coordinate calculation)
+  sensor_width_mm: 7.6           # Horizontal sensor size in mm
+  focal_length_mm: 4.4           # Camera focal length in mm
+  gimbal_pitch_deg: 90           # 90 = nadir (straight down), 0 = horizontal
 
 # Logging
 logging:

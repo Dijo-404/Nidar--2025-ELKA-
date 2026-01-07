@@ -6,6 +6,7 @@ Modules:
     - path_finder: KML parsing and waypoint generation
     - human_detector: YOLO-based human detection
     - simple_tracker: Lightweight object tracking
+    - geotagging: GSD-based detection coordinate calculation
 """
 
 # Lazy imports to avoid dependency issues
@@ -23,6 +24,12 @@ def __getattr__(name):
     elif name == "CentroidTracker":
         from .simple_tracker import CentroidTracker
         return CentroidTracker
+    elif name == "GeoTagger":
+        from .geotagging import GeoTagger
+        return GeoTagger
+    elif name == "GeoTaggedDetection":
+        from .geotagging import GeoTaggedDetection
+        return GeoTaggedDetection
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-__all__ = ["PathFinder", "HumanDetector", "SimpleTracker", "CentroidTracker"]
+__all__ = ["PathFinder", "HumanDetector", "SimpleTracker", "CentroidTracker", "GeoTagger", "GeoTaggedDetection"]
