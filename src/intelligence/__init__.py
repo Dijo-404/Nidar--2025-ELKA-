@@ -17,6 +17,12 @@ def __getattr__(name):
     elif name == "HumanDetector":
         from .human_detector import HumanDetector
         return HumanDetector
+    elif name == "HumanTracker":
+        from .human_tracker import HumanTracker
+        return HumanTracker
+    elif name == "DroneTrackerConfig":
+        from .human_tracker import DroneTrackerConfig
+        return DroneTrackerConfig
     elif name == "GeoTagger":
         from .geotagging import GeoTagger
         return GeoTagger
@@ -25,5 +31,5 @@ def __getattr__(name):
         return GeoTaggedDetection
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-__all__ = ["PathFinder", "HumanDetector", "GeoTagger", "GeoTaggedDetection"]
+__all__ = ["PathFinder", "HumanDetector", "HumanTracker", "DroneTrackerConfig", "GeoTagger", "GeoTaggedDetection"]
 

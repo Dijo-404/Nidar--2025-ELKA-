@@ -25,7 +25,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.base.drone_pilot import DronePilot
 from src.intelligence.path_finder import PathFinder
-from src.intelligence.human_detector import HumanDetector, DetectionResult
+from src.intelligence.human_tracker import HumanTracker
+from src.intelligence.geotagging import GeoTaggedDetection
 from src.comms.bridge_client import BridgeClient
 from src.utils.state_machine import StateMachine, MissionState
 from src.utils.geo_math import haversine_distance
@@ -77,7 +78,7 @@ class SurveyLeaderMission:
         # Initialize components (will be created in setup)
         self.drone: DronePilot = None
         self.path_finder: PathFinder = None
-        self.detector: HumanDetector = None
+        self.tracker: HumanTracker = None
         self.comms: BridgeClient = None
         
         # Mission state
@@ -141,16 +142,23 @@ class SurveyLeaderMission:
                 logger.error("Failed to connect to drone")
                 return False
             
-            # 3. Initialize human detector
+            # 3. Initialize human tracker (with BoT-SORT + geotagging)
             detection_config = self.config.get('detection', {})
+            tracking_config = self.config.get('tracking', {})
             model_path = detection_config.get('model_path')
             
             if not model_path or not os.path.exists(model_path):
                 logger.error(f"YOLO model not found: {model_path}")
                 return False
             
-            self.detector = HumanDetector(model_path, detection_config)
-            self.detector.on_detection = self._on_human_detected
+            # Merge detection and tracking configs
+            tracker_config = {
+                'confidence_threshold': detection_config.get('confidence_threshold', 0.7),
+                'target_class_id': detection_config.get('target_class_id', 0),
+                **tracking_config
+            }
+            self.tracker = HumanTracker(model_path, tracker_config)
+            logger.info("HumanTracker (BoT-SORT + Geotagging) initialized")
             
             # 4. Initialize communications
             relay_config = self.network_config.get('ground_relay', {})
@@ -174,48 +182,44 @@ class SurveyLeaderMission:
             logger.error(f"Setup failed: {e}")
             return False
     
-    def _on_human_detected(self, result: DetectionResult):
+    def _process_detections(self, geotagged_detections: list):
         """
-        Callback when human is detected.
+        Process geotagged detections and send to relay.
         
         Args:
-            result: Detection result with bounding boxes
+            geotagged_detections: List of GeoTaggedDetection objects
         """
         if self.abort_requested:
             return
         
-        # Get current drone GPS
-        gps = self.drone.get_current_gps()
-        if not gps:
-            logger.warning("Detection occurred but no GPS available")
-            return
-        
-        lat, lon, alt = gps
-        
-        logger.info(f"HUMAN DETECTED at drone position ({lat:.6f}, {lon:.6f}, {alt:.1f}m)")
-        
-        # Transition to detected state briefly
-        prev_state = self.state_machine.get_state()
-        self.state_machine.transition_to(MissionState.DETECTED, "Human detected")
-        
-        # Send coordinates to relay
-        if self.comms and self.comms.is_connected:
-            if self.comms.send_coordinates(lat, lon, alt, result.timestamp):
-                self.detections_sent += 1
-                logger.info(f"Coordinates sent to relay (total: {self.detections_sent})")
-            else:
-                logger.error("Failed to send coordinates")
-        
-        # Save detection image
-        if result.frame is not None:
-            self.detector.save_detection_image(
-                result, 
-                self.detection_log_dir,
-                prefix=f"detection_{self.detections_sent}"
-            )
-        
-        # Return to previous state
-        self.state_machine.transition_to(prev_state, "Continuing survey")
+        for detection in geotagged_detections:
+            if not detection.target_lat or not detection.target_lon:
+                continue
+            
+            logger.info(f"🎯 TARGET DETECTED (ID:{detection.track_id})")
+            logger.info(f"   Drone GPS: ({detection.drone_lat:.6f}, {detection.drone_lon:.6f})")
+            logger.info(f"   Target GPS: ({detection.target_lat:.6f}, {detection.target_lon:.6f})")
+            logger.info(f"   Offset: {detection.offset_north_m:.1f}m N, {detection.offset_east_m:.1f}m E")
+            
+            # Transition to detected state briefly
+            prev_state = self.state_machine.get_state()
+            self.state_machine.transition_to(MissionState.DETECTED, "Human detected")
+            
+            # Send TARGET coordinates (not drone coordinates) to relay
+            if self.comms and self.comms.is_connected:
+                if self.comms.send_coordinates(
+                    detection.target_lat,
+                    detection.target_lon,
+                    detection.drone_alt,  # Use drone altitude for delivery
+                    time.time()
+                ):
+                    self.detections_sent += 1
+                    logger.info(f"✅ Target coordinates sent to relay (total: {self.detections_sent})")
+                else:
+                    logger.error("Failed to send coordinates")
+            
+            # Return to previous state
+            self.state_machine.transition_to(prev_state, "Continuing survey")
     
     def execute(self) -> bool:
         """
@@ -241,8 +245,24 @@ class SurveyLeaderMission:
             else:
                 logger.warning("No RTSP URL configured - detection disabled")
             
-            # Execute waypoints
+            # Execute waypoints with tracking
             self.state_machine.transition_to(MissionState.SURVEY, "Beginning survey")
+            
+            # Get camera config for frame dimensions
+            camera_config = self.config.get('camera', {})
+            frame_width = camera_config.get('frame_width', 1920)
+            frame_height = camera_config.get('frame_height', 1080)
+            
+            # Start video capture
+            rtsp_url = camera_config.get('rtsp_url')
+            cap = None
+            if rtsp_url:
+                import cv2
+                logger.info(f"Opening camera stream: {rtsp_url}")
+                cap = cv2.VideoCapture(rtsp_url)
+                if not cap.isOpened():
+                    logger.warning("Failed to open camera - continuing without detection")
+                    cap = None
             
             for i, waypoint in enumerate(self.waypoints):
                 if self.abort_requested:
@@ -260,9 +280,30 @@ class SurveyLeaderMission:
                     logger.error("Navigation command failed")
                     continue
                 
-                # Wait for arrival
-                if not self.drone.wait_for_arrival(lat, lon, tolerance=2.0, timeout=60.0):
-                    logger.warning("Waypoint arrival timeout - continuing to next")
+                # Process frames while navigating
+                while not self.drone.wait_for_arrival(lat, lon, tolerance=2.0, timeout=1.0):
+                    if self.abort_requested:
+                        break
+                    
+                    # Get current drone state
+                    gps = self.drone.get_current_gps()
+                    heading = self.drone.get_heading() or 0.0
+                    
+                    if cap and gps:
+                        ret, frame = cap.read()
+                        if ret and frame is not None:
+                            drone_lat, drone_lon, drone_alt = gps
+                            
+                            # Track and geotag
+                            new_detections = self.tracker.track_and_geotag(
+                                frame,
+                                drone_lat, drone_lon, drone_alt, heading,
+                                frame_width, frame_height
+                            )
+                            
+                            # Process any new detections
+                            if new_detections:
+                                self._process_detections(new_detections)
                 
                 # Update comms status
                 if self.comms:
@@ -272,7 +313,12 @@ class SurveyLeaderMission:
                         battery_percent=battery_pct
                     )
             
+            # Release camera
+            if cap:
+                cap.release()
+            
             logger.info(f"Survey complete! Detections sent: {self.detections_sent}")
+            logger.info(f"Unique tracks geotagged: {self.tracker.get_geotagged_count()}")
             
             # RTL
             return self._return_to_launch()
@@ -311,9 +357,7 @@ class SurveyLeaderMission:
         """Execute RTL procedure."""
         logger.info("Returning to launch...")
         
-        # Stop detection
-        if self.detector:
-            self.detector.stop()
+        # Tracker doesn't need explicit stop (no background thread)
         
         self.state_machine.transition_to(MissionState.RTL, "Mission complete")
         
@@ -335,8 +379,7 @@ class SurveyLeaderMission:
         logger.error("EMERGENCY RTL TRIGGERED")
         self.state_machine.force_state(MissionState.EMERGENCY, "Emergency")
         
-        if self.detector:
-            self.detector.stop()
+        # Tracker doesn't need explicit stop
         
         if self.drone:
             self.drone.rtl_now()
@@ -345,8 +388,7 @@ class SurveyLeaderMission:
         """Clean shutdown of all components."""
         logger.info("Shutting down...")
         
-        if self.detector:
-            self.detector.stop()
+        # Tracker doesn't need explicit stop
         
         if self.comms:
             self.comms.disconnect()

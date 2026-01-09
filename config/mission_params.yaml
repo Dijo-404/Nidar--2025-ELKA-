@@ -27,6 +27,18 @@ detection:
   target_class_id: 0             # class ID for 'person'
   frame_skip: 2                  # process every Nth frame for performance
 
+# Tracking Parameters (BoT-SORT)
+tracking:
+  enabled: true                  # Enable tracking mode
+  tracker_type: "botsort"        # Tracker type
+  track_high_thresh: 0.5         # High confidence detection threshold
+  track_low_thresh: 0.1          # Low confidence for second association
+  new_track_thresh: 0.7          # Threshold for creating new tracks
+  track_buffer: 90               # Frames to keep lost tracks (1.5s at 60fps)
+  match_thresh: 0.7              # Matching threshold for association
+  with_reid: true                # Enable Re-ID appearance matching
+  counting_box_ratio: 0.9        # Counting zone size (percentage of frame)
+
 # Payload Configuration
 payload:
   initial_count: 10              # number of payloads loaded

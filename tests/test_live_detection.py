@@ -80,43 +80,25 @@ def load_config():
         return {}, {}
 
 
-def create_video_capture(rtsp_url: str, use_tcp: bool = True):
+def create_video_capture(rtsp_url: str):
     """
-    Create optimized video capture for RTSP stream.
-    
-    Args:
-        rtsp_url: RTSP URL
-        use_tcp: Use TCP transport (more reliable than UDP)
-    
-    Returns:
-        cv2.VideoCapture object or None
+    Create simple video capture for RTSP stream.
+    Uses vanilla OpenCV - no FFMPEG backend to avoid timeouts.
     """
-    # Set environment for RTSP optimization (Linux-specific Qt setting)
     import platform
+    
+    # Fix Qt platform issues on Linux
     if platform.system() == 'Linux':
         os.environ['QT_QPA_PLATFORM'] = 'xcb'
-    os.environ['OPENCV_FFMPEG_CAPTURE_OPTIONS'] = 'rtsp_transport;tcp|stimeout;5000000'
     
-    # Try different backends
-    backends = [
-        (cv2.CAP_FFMPEG, "FFMPEG"),
-        (cv2.CAP_GSTREAMER, "GStreamer"),
-        (cv2.CAP_ANY, "Any"),
-    ]
+    # Simple capture - let OpenCV choose backend
+    cap = cv2.VideoCapture(rtsp_url)
     
-    for backend, name in backends:
-        try:
-            cap = cv2.VideoCapture(rtsp_url, backend)
-            
-            if cap.isOpened():
-                # Set buffer size to 1 for low latency
-                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                return cap
-        except Exception:
-            continue
+    if cap.isOpened():
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        return cap
     
-    # Fallback to default
-    return cv2.VideoCapture(rtsp_url)
+    return None
 
 
 def test_rtsp_connection(rtsp_url: str) -> bool:
@@ -220,8 +202,8 @@ def get_detection_color(index: int) -> tuple:
 
 def run_live_detection(rtsp_url: str, model, mission_config: dict,
                        mavlink_conn=None, save_detections: bool = False, 
-                       confidence: float = 0.7):
-    """Run live detection on RTSP stream."""
+                       confidence: float = 0.7, enable_tracking: bool = False):
+    """Run live detection on RTSP stream with optional BoT-SORT tracking."""
     global SHUTDOWN_REQUESTED
     
     print("\n" + "="*60)
@@ -233,7 +215,7 @@ def run_live_detection(rtsp_url: str, model, mission_config: dict,
     mav = None
     
     try:
-        # Open video stream with optimized settings
+        # Open video stream
         print("[INFO] Opening RTSP stream...")
         cap = create_video_capture(rtsp_url)
         
@@ -250,6 +232,30 @@ def run_live_detection(rtsp_url: str, model, mission_config: dict,
         camera_config = mission_config.get('camera', {})
         geotagger = GeoTagger(camera_config)
         print(f"[INFO] GeoTagger initialized (GSD-based geotagging enabled)")
+        
+        # Initialize tracker if enabled
+        tracker = None
+        if enable_tracking:
+            try:
+                from src.intelligence.human_tracker import HumanTracker
+                detection_config = mission_config.get('detection', {})
+                tracking_config = mission_config.get('tracking', {})
+                tracker = HumanTracker(
+                    model_path=None,  # Use model already loaded
+                    config={
+                        'confidence_threshold': confidence,
+                        'track_high_thresh': tracking_config.get('track_high_thresh', 0.5),
+                        'track_low_thresh': tracking_config.get('track_low_thresh', 0.1),
+                        'new_track_thresh': tracking_config.get('new_track_thresh', 0.7),
+                        'track_buffer': tracking_config.get('track_buffer', 90),
+                        'match_thresh': tracking_config.get('match_thresh', 0.7),
+                        'with_reid': tracking_config.get('with_reid', True),
+                    }
+                )
+                print(f"[INFO] BoT-SORT tracker initialized")
+            except Exception as e:
+                print(f"[WARN] Failed to initialize tracker: {e}")
+                enable_tracking = False
         
         frame_count = 0
         detection_count = 0
@@ -272,13 +278,17 @@ def run_live_detection(rtsp_url: str, model, mission_config: dict,
         
         print("[INFO] Starting detection loop...")
         
+        # Target resolution for processing (lower = faster, more stable)
+        TARGET_WIDTH = 640
+        TARGET_HEIGHT = 480
+        
         while not SHUTDOWN_REQUESTED:
-            # Read frame
-            try:
-                ret, frame = cap.read()
-            except Exception as e:
-                print(f"[ERROR] Frame read error: {e}")
-                ret = False
+            # Simple frame read
+            ret, frame = cap.read()
+            
+            # Resize frame for faster processing
+            if ret and frame is not None:
+                frame = cv2.resize(frame, (TARGET_WIDTH, TARGET_HEIGHT))
             
             if not ret or frame is None:
                 reconnect_attempts += 1
@@ -477,6 +487,7 @@ def main():
     parser.add_argument('--confidence', type=float, default=0.7, help='Confidence threshold')
     parser.add_argument('--save', action='store_true', help='Auto-save detection frames')
     parser.add_argument('--test-only', action='store_true', help='Only test connections')
+    parser.add_argument('--track', action='store_true', help='Enable BoT-SORT tracking mode')
     
     args = parser.parse_args()
     
@@ -529,7 +540,8 @@ def main():
             mission_config,
             mavlink_conn=mavlink_conn if not args.no_mavlink else None,
             save_detections=args.save,
-            confidence=args.confidence
+            confidence=args.confidence,
+            enable_tracking=args.track
         )
     else:
         print("\n[ERROR] Cannot run live detection. Fix the issues above.")
