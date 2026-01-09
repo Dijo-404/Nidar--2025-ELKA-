@@ -1,36 +1,105 @@
-# Nidar - Dual-Drone Mission Control System
+# Nidar - Dual-Drone Search & Rescue System
 
-A locally-networked system for coordinating two drones: one surveys an area using YOLO-based human detection, while the other delivers payloads to detected locations.
+**Autonomous dual-drone system for human detection and payload delivery.**
+
+> Drone 1 scans an area, detects humans using AI, and sends precise GPS coordinates to Drone 2, which delivers payloads to those locations.
 
 ---
 
-## System Overview
+## How It Works
 
 ```mermaid
-flowchart TB
-    subgraph DRONE1["DRONE 1: SURVEYOR"]
-        D1A["KML Path Planning"]
-        D1B["YOLO Detection"]
-        D1C["GPS Geotagging"]
+flowchart LR
+    subgraph D1["🔍 DRONE 1 (Scout)"]
+        A[Fly Survey Path] --> B[Detect Humans]
+        B --> C[Track & Geotag]
     end
     
-    subgraph RELAY["GROUND RELAY"]
-        R1["Message Router"]
-        R2["Status Monitor"]
-        R3["Logging"]
+    C -->|Target GPS| R[📡 Ground Relay]
+    
+    R -->|Coordinates| D2
+    
+    subgraph D2["📦 DRONE 2 (Delivery)"]
+        D[Navigate to Target] --> E[Drop Payload]
     end
-    
-    subgraph DRONE2["DRONE 2: DELIVERER"]
-        D2A["Target Queue"]
-        D2B["Navigation"]
-        D2C["Payload Drop"]
-    end
-    
-    DRONE1 <-->|"ZMQ TCP/5555"| RELAY
-    RELAY <-->|"ZMQ TCP/5555"| DRONE2
-    
-    D1C -->|"GPS Coordinates"| R1
-    R1 -->|"Target Location"| D2A
+```
+
+**Mission Flow:**
+1. **Scout Drone** flies a KML-defined path, scanning for humans
+2. **BoT-SORT Tracker** assigns persistent IDs (no double counting)
+3. **Geotagging** computes precise target GPS from pixel position
+4. **Ground Relay** forwards coordinates to Delivery Drone
+5. **Delivery Drone** navigates to each target and drops payload
+6. Both drones RTL when complete
+
+---
+
+## Quick Start
+
+### 1. Install
+
+```bash
+# Clone & setup
+git clone https://github.com/your-repo/Nidar--2025-ELKA-.git
+cd Nidar--2025-ELKA-
+
+# Using conda (recommended)
+conda create -n Nidar python=3.10
+conda activate Nidar
+pip install -r requirements.txt
+```
+
+### 2. Configure
+
+Edit `config/network_map.yaml`:
+```yaml
+ground_relay:
+  ip: "192.168.1.100"    # Your laptop IP
+  zmq_port: 5555
+
+drone1:
+  mavlink_connection: "udp:127.0.0.1:14550"
+  
+drone2:
+  mavlink_connection: "udp:127.0.0.1:14551"
+```
+
+Edit `config/mission_params.yaml`:
+```yaml
+detection:
+  model_path: "best_model/dj_yolo_best/weights/best.pt"
+  confidence_threshold: 0.70
+
+camera:
+  rtsp_url: "rtsp://192.168.144.25:8554/main.264"
+```
+
+### 3. Test (Before Flying!)
+
+```bash
+# Test tracker on video
+python tests/test_human_tracker.py --video /path/to/video.mp4
+
+# Test live camera (no drone)
+python tests/test_live_detection.py --track --no-mavlink
+
+# Test mission in dry-run mode
+python missions/01_survey_leader.py --test
+```
+
+### 4. Run Full Mission
+
+Open 3 terminals:
+
+```bash
+# Terminal 1: Ground Relay
+python missions/00_ground_relay.py
+
+# Terminal 2: Delivery Drone (start first, waits for targets)
+python missions/02_delivery_follower.py
+
+# Terminal 3: Survey Drone
+python missions/01_survey_leader.py --kml config/geofence/sector_alpha.kml
 ```
 
 ---
@@ -39,376 +108,113 @@ flowchart TB
 
 ```
 Nidar--2025-ELKA-/
-├── config/                     # Configuration files
-│   ├── mission_params.yaml     # Flight, detection, payload settings
-│   ├── network_map.yaml        # Network IPs and ports
-│   └── geofence/
-│       └── sector_alpha.kml    # Survey area definition
+├── config/
+│   ├── mission_params.yaml    # Flight, detection, tracking settings
+│   ├── network_map.yaml       # Network IPs and ports
+│   └── geofence/              # KML survey areas
 │
-├── src/                        # Source code
-│   ├── base/                   # Hardware abstraction
-│   │   ├── drone_pilot.py      # MAVLink flight control
-│   │   └── payload_servo.py    # Drop mechanism driver
+├── src/
+│   ├── base/                  # Hardware drivers
+│   │   ├── drone_pilot.py     # MAVLink flight control
+│   │   └── payload_servo.py   # Drop mechanism
 │   │
-│   ├── intelligence/           # Decision making
-│   │   ├── path_finder.py      # KML to waypoints conversion
-│   │   ├── human_detector.py   # YOLO detection
-│   │   └── geotagging.py       # GSD-based GPS coordinate calculation
+│   ├── intelligence/          # AI & Decision Making
+│   │   ├── human_tracker.py   # BoT-SORT tracking + counting
+│   │   ├── geotagging.py      # Pixel → GPS conversion
+│   │   └── path_finder.py     # KML → waypoints
 │   │
-│   ├── comms/                  # Networking
-│   │   ├── bridge_client.py    # Drone ZMQ client
-│   │   ├── relay_server.py     # Ground station server
-│   │   └── telemetry_forwarder.py # MAVLink GCS forwarding
+│   ├── comms/                 # Networking
+│   │   ├── bridge_client.py   # Drone ZMQ client
+│   │   └── relay_server.py    # Ground station
 │   │
-│   └── utils/                  # Helpers
-│       ├── geo_math.py         # Geospatial calculations
-│       └── state_machine.py    # Mission state tracking
+│   └── utils/                 # Helpers
 │
-├── missions/                   # Executables
-│   ├── 00_ground_relay.py      # Laptop relay server
-│   ├── 01_survey_leader.py     # Drone 1 mission
-│   └── 02_delivery_follower.py # Drone 2 mission
+├── missions/                  # Main executables
+│   ├── 00_ground_relay.py     # Laptop relay server
+│   ├── 01_survey_leader.py    # Scout drone mission
+│   └── 02_delivery_follower.py# Delivery drone mission
 │
-├── tests/                      # Test suite
-│   ├── test_live_detection.py  # Live camera detection test
-│   ├── test_geotagging.py      # Geotagging unit tests
-│   └── ...                     # Other tests
-├── logs/                       # Auto-generated logs
-└── requirements.txt            # Dependencies
+└── tests/                     # Test scripts
+    ├── test_human_tracker.py  # Test tracker on video
+    └── test_live_detection.py # Test with camera
 ```
 
 ---
 
-## Installation
+## Key Features
 
-### Prerequisites
+### 🎯 BoT-SORT Human Tracking
+- Persistent track IDs across frames
+- Camera motion compensation (for drone movement)
+- Re-ID appearance matching
+- Counts each person only once
 
-- Python 3.9+
-- NVIDIA GPU with CUDA (recommended for YOLO)
-- MAVLink-compatible flight controllers (ArduPilot/PX4)
-- Local WiFi network
+### 🌍 Precision Geotagging
+- Converts pixel position → GPS coordinates
+- Accounts for drone heading (rotation)
+- GSD-based calculation for altitude accuracy
 
-### Setup (Linux)
+### 🔗 ZMQ Communication
+- Reliable message delivery with ACKs
+- Real-time coordinate forwarding
+- Battery/status monitoring
 
-```bash
-# Clone repository
-git clone https://github.com/your-repo/Nidar--2025-ELKA-.git
-cd Nidar--2025-ELKA-
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### Setup (Windows)
-
-```powershell
-# Clone repository
-git clone https://github.com/your-repo/Nidar--2025-ELKA-.git
-cd Nidar--2025-ELKA-
-
-# Create virtual environment
-python -m venv venv
-.\venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
+### 🛡️ Safety Features
+- Battery failsafe (auto-RTL at 20%)
+- Payload exhaustion detection
+- Connection loss handling
+- FIFO target queue (no race conditions)
 
 ---
 
-## Configuration
+## Configuration Reference
 
-### 1. Network Setup
-
-Edit `config/network_map.yaml` with your local network IPs:
+### Tracking (`mission_params.yaml`)
 
 ```yaml
-ground_relay:
-  ip: "192.168.1.100"    # Laptop IP
-  zmq_port: 5555
-
-drone1:
-  mavlink_connection: "udp:127.0.0.1:14550"
-  zmq_identity: "SURVEYOR"
-
-drone2:
-  mavlink_connection: "udp:127.0.0.1:14551"
-  zmq_identity: "DELIVERER"
+tracking:
+  enabled: true
+  track_buffer: 90           # Frames to keep lost tracks
+  new_track_thresh: 0.7      # Higher = fewer false tracks
+  with_reid: true            # Appearance-based matching
+  counting_box_ratio: 0.9    # Detection zone size
 ```
 
-### 2. Mission Parameters
-
-Edit `config/mission_params.yaml`:
-
-```yaml
-flight:
-  survey:
-    cruise_altitude: 20.0    # Survey height (meters)
-  delivery:
-    hold_altitude: 25.0      # Loiter height
-    
-detection:
-  model_path: "/path/to/weights/best.pt"
-  confidence_threshold: 0.70
-  
-payload:
-  initial_count: 10          # Payloads loaded
-  drop_altitude: 10.0        # Drop height
-```
-
-### 3. Camera & Geotagging
-
-Configure camera calibration for accurate GPS coordinate calculation:
+### Camera Geotagging
 
 ```yaml
 camera:
-  rtsp_url: "rtsp://192.168.144.25:8554/main.264"
-  frame_width: 1920
-  frame_height: 1080
-  # Geotagging calibration
-  sensor_width_mm: 7.6      # Camera sensor width
-  focal_length_mm: 4.4      # Camera focal length
-  gimbal_pitch_deg: 90      # 90 = straight down (nadir)
-```
-
-### 4. Survey Area
-
-Define the survey polygon in `config/geofence/sector_alpha.kml` (can be created with Google Earth).
-
-### 4. GCS Monitoring (Mission Planner)
-
-To monitor missions in Mission Planner, configure telemetry forwarding in `config/network_map.yaml`:
-
-```yaml
-gcs:
-  enabled: true                  # Enable telemetry forwarding
-  ip: "192.168.1.100"            # IP where Mission Planner is running
-  drone1_port: 14560             # UDP port for Drone 1 telemetry
-  drone2_port: 14561             # UDP port for Drone 2 telemetry
-```
-
-**Mission Planner Setup:**
-
-1. Open Mission Planner
-2. Go to **Connection** dropdown
-3. Select **UDP**
-4. Set port to **14560** (for Drone 1) or **14561** (for Drone 2)
-5. Click **Connect**
-
-You can open multiple Mission Planner instances to monitor both drones simultaneously.
-
----
-
-## Quick Start Guide
-
-### Step 1: Install Dependencies
-
-```bash
-cd /path/to/Nidar--2025-ELKA-
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-### Step 2: Configure Network
-
-Edit `config/network_map.yaml` with your network IPs.
-
-### Step 3: Test Detection (Recommended First)
-
-```bash
-# Test live detection with camera (no drone needed)
-python tests/test_live_detection.py --no-mavlink
-
-# Test with drone connection
-python tests/test_live_detection.py
-```
-
-Press `q` to quit, `s` to save frame, `t` to toggle tracking.
-
-### Step 4: Run Unit Tests
-
-```bash
-# Test geotagging calculations
-python tests/test_geotagging.py
-
-# Run all tests
-python -m pytest tests/ -v
-```
-
----
-
-## Mission Execution
-
-### Test Mode (No Flight)
-
-```bash
-# Test survey mission
-python missions/01_survey_leader.py --test
-
-# Test delivery mission
-python missions/02_delivery_follower.py --test
-```
-
-### Full Mission
-
-**Terminal 1 - Ground Relay:**
-```bash
-python missions/00_ground_relay.py
-```
-
-**Terminal 2 - Delivery Drone:**
-```bash
-python missions/02_delivery_follower.py
-```
-
-**Terminal 3 - Survey Drone:**
-```bash
-python missions/01_survey_leader.py --kml config/geofence/sector_alpha.kml
-```
-
----
-
-## Running Tests
-
-```bash
-# Run all tests
-python -m pytest tests/ -v
-
-# Run specific test
-python -m pytest tests/test_kml_parsing.py -v
-
-# Run with coverage
-python -m pytest tests/ --cov=src --cov-report=html
-```
-
----
-
-## Safety Features
-
-### Battery Failsafe
-- Continuous battery monitoring
-- Automatic RTL below 20% or 14V
-
-### Payload Exhaustion
-- Strict count tracking
-- Immediate RTL when payload count reaches 0
-
-### Race Condition Handling
-- FIFO queue for targets
-- Completes current drop before processing next
-
-### Connection Loss
-- Heartbeat monitoring (1s interval, 5s timeout)
-- Auto-reconnect attempts
-- Buffered messages
-
----
-
-## Network Architecture
-
-The system uses ZeroMQ for local communication:
-
-```mermaid
-flowchart LR
-    subgraph D1["Drone 1"]
-        D1S["DEALER Socket"]
-    end
-    
-    subgraph GR["Ground Relay"]
-        R["ROUTER Socket"]
-        LOG["Message Logger"]
-        STAT["Status Display"]
-    end
-    
-    subgraph D2["Drone 2"]
-        D2S["DEALER Socket"]
-    end
-    
-    D1S <-->|"Coordinates"| R
-    R <-->|"Commands"| D2S
-    R --> LOG
-    R --> STAT
-```
-
-- **ZMQ ROUTER/DEALER** - Async bidirectional communication
-- **Coordinate ACKs** - Messages require acknowledgment
-
----
-
-## Geotagging
-
-The geotagging module converts detected object positions to GPS coordinates:
-
-```python
-from src.intelligence.geotagging import GeoTagger
-
-# Initialize with camera config
-geotagger = GeoTagger(camera_config)
-
-# Compute target GPS from detection
-result = geotagger.geotag_detection(
-    box_xywh=[960, 540, 100, 200],  # Detection center & size
-    confidence=0.9,
-    drone_lat=12.97, drone_lon=77.59, drone_alt=20.0,
-    drone_heading=45.0  # Heading compensation
-)
-
-print(f"Target: ({result.target_lat:.6f}, {result.target_lon:.6f})")
-print(f"GSD: {result.gsd_m:.4f} m/px")
-```
-
-**Key features:**
-- GSD (Ground Sample Distance) calculation
-- Drone heading compensation for accurate N/E mapping
-- WGS84-aware coordinate conversion
-
----
-
-## YOLO Model
-
-Default model path:
-```
-best_model/dj_yolo_best/weights/best.pt
-```
-
-Detection parameters:
-- Confidence threshold: 70%
-- Target class: Person (ID 0)
-- Frame skip: Process every 2nd frame
-
----
-
-## Logs
-
-```
-logs/
-├── flight_logs/          # MAVLink telemetry
-├── detections/           # Detection snapshots with bounding boxes
-└── relay_*.log           # Message relay logs
+  sensor_width_mm: 7.6       # Camera sensor size
+  focal_length_mm: 4.4       # Lens focal length
+  gimbal_pitch_deg: 90       # 90 = nadir (straight down)
 ```
 
 ---
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| No GPS Fix | Ensure GPS has clear sky view, wait 30-60s for 3D fix |
-| MAVLink Connection Failed | Check connection string in `network_map.yaml`, verify port forwarding |
-| YOLO Detection Not Working | Verify model path exists, check RTSP stream URL, ensure GPU available |
-| ZMQ Connection Issues | Verify devices on same network, check firewall (port 5555) |
+| Problem | Solution |
+|---------|----------|
+| No detections | Lower `confidence_threshold` to 0.4-0.5 |
+| Duplicate counts | Increase `new_track_thresh` to 0.8 |
+| Wrong target GPS | Check `gimbal_pitch_deg` and heading |
+| RTSP timeout | Verify camera IP, try `ffplay rtsp://...` |
+| ZMQ connection failed | Check firewall, verify IPs match |
+
+---
+
+## Requirements
+
+- Python 3.9+
+- NVIDIA GPU + CUDA (recommended)
+- ArduPilot/PX4 flight controller
+- SIYI or similar RTSP camera
+- Local WiFi network
 
 ---
 
 ## License
 
-MIT License - See LICENSE file for details.
+MIT License - See [LICENSE](LICENSE) for details.
 
----
-
-**IMPORTANT**: Always test in simulation first. Ensure compliance with local drone regulations.
+> ⚠️ **Always test in simulation (SITL) before real flights. Follow local drone regulations.**
