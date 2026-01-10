@@ -29,7 +29,6 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.base.drone_pilot import DronePilot
-from src.base.payload_servo import PayloadServo
 from src.comms.bridge_client import BridgeClient, CoordinateMessage
 from src.utils.state_machine import StateMachine, MissionState
 from src.utils.geo_math import haversine_distance
@@ -132,11 +131,17 @@ class DeliveryFollowerMission:
                 logger.error("Failed to connect to drone")
                 return False
             
-            # 2. Initialize payload servo
+            # 2. Initialize payload mechanism (ESP32 or MAVLink)
             payload_config = self.config.get('payload', {})
-            self.payload = PayloadServo(self.drone.mav, payload_config)
             
-            logger.info(f"Payload initialized: {self.payload.remaining()} units")
+            if payload_config.get('use_esp32', False):
+                from src.base.payload_esp32 import PayloadESP32
+                self.payload = PayloadESP32(payload_config)
+                logger.info(f"ESP32 Payload initialized: {self.payload.remaining()} units")
+            else:
+                from src.base.payload_servo import PayloadServo
+                self.payload = PayloadServo(self.drone.mav, payload_config)
+                logger.info(f"MAVLink Payload initialized: {self.payload.remaining()} units")
             
             # 3. Initialize communications
             relay_config = self.network_config.get('ground_relay', {})

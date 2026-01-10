@@ -43,10 +43,17 @@ tracking:
 payload:
   initial_count: 10              # number of payloads loaded
   drop_altitude: 10.0            # meters above ground for drop
+  drop_stabilize_time: 2.0       # seconds to stabilize before drop
+  
+  # ESP32 + PCA9685 Configuration
+  use_esp32: true                # true = ESP32, false = MAVLink servo
+  esp32_serial_port: "/dev/ttyUSB0"  # Serial port for ESP32
+  esp32_baud_rate: 115200        # Serial baud rate
+  
+  # MAVLink Servo (if use_esp32: false)
   servo_channel: 9               # MAVLink servo channel
   servo_drop_pwm: 2000           # PWM value to trigger drop
   servo_hold_pwm: 1000           # PWM value to hold payload
-  drop_stabilize_time: 2.0       # seconds to stabilize before drop
 
 # Safety Parameters
 safety:

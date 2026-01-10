@@ -12,6 +12,7 @@ pymavlink>=2.4.0            # MAVLink protocol
 
 # Networking
 pyzmq>=25.0.0               # ZeroMQ for drone communication
+pyserial>=3.5               # Serial communication for ESP32
 
 # Geospatial
 shapely>=2.0.0              # Geometry operations
