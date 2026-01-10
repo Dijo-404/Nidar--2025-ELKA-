@@ -148,11 +148,50 @@ Nidar--2025-ELKA-/
 │   └── esp32_payload/         # ESP32 payload drop controller
 │       └── esp32_payload.ino  # Arduino firmware
 │
+├── simulation/                # Testing and simulation
+│   ├── sitl_launcher.py       # ArduPilot SITL launcher
+│   ├── mock_components.py     # Mock drone, payload, camera
+│   └── test_dual_mission.py   # Full mission simulation
+│
 └── tests/                     # Test scripts
     ├── test_human_tracker.py  # Test tracker on video
     ├── test_live_detection.py # Test with camera
     └── test_geotagging.py     # Geotagging unit tests
 ```
+
+---
+
+## Simulation and Testing
+
+### Mock Simulation (No Hardware)
+
+Run a complete mission simulation without any hardware:
+
+```bash
+python simulation/test_dual_mission.py --detections 5
+```
+
+This simulates:
+- Drone 1 flying waypoints and detecting humans
+- Geotagging computing target GPS
+- Drone 2 receiving coordinates and dropping payloads
+
+### ArduPilot SITL
+
+For full flight simulation with ArduPilot SITL:
+
+```bash
+# Start SITL for both drones
+python simulation/sitl_launcher.py
+
+# In separate terminals, run missions
+python missions/01_survey_leader.py --sitl
+python missions/02_delivery_follower.py --sitl
+```
+
+Requirements:
+- ArduPilot source code installed
+- Set ARDUPILOT_HOME environment variable
 
 ---
 
