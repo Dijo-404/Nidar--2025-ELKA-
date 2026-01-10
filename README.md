@@ -1,35 +1,35 @@
-# Nidar - Dual-Drone Search & Rescue System
+# Nidar - Dual-Drone Search and Rescue System
 
-**Autonomous dual-drone system for human detection and payload delivery.**
+Autonomous dual-drone system for human detection and payload delivery.
 
-> Drone 1 scans an area, detects humans using AI, and sends precise GPS coordinates to Drone 2, which delivers payloads to those locations.
+Drone 1 scans an area, detects humans using AI, and sends precise GPS coordinates to Drone 2, which delivers payloads to those locations.
 
 ---
 
-## How It Works
+## System Architecture
 
 ```mermaid
 flowchart LR
-    subgraph D1["🔍 DRONE 1 (Scout)"]
+    subgraph D1["DRONE 1 - Scout"]
         A[Fly Survey Path] --> B[Detect Humans]
-        B --> C[Track & Geotag]
+        B --> C[Track and Geotag]
     end
     
-    C -->|Target GPS| R[📡 Ground Relay]
+    C -->|Target GPS| R[Ground Relay]
     
     R -->|Coordinates| D2
     
-    subgraph D2["📦 DRONE 2 (Delivery)"]
+    subgraph D2["DRONE 2 - Delivery"]
         D[Navigate to Target] --> E[Drop Payload]
     end
 ```
 
 **Mission Flow:**
-1. **Scout Drone** flies a KML-defined path, scanning for humans
-2. **BoT-SORT Tracker** assigns persistent IDs (no double counting)
-3. **Geotagging** computes precise target GPS from pixel position
-4. **Ground Relay** forwards coordinates to Delivery Drone
-5. **Delivery Drone** navigates to each target and drops payload
+1. Scout Drone flies a KML-defined path, scanning for humans
+2. BoT-SORT Tracker assigns persistent IDs (no double counting)
+3. Geotagging computes precise target GPS from pixel position
+4. Ground Relay forwards coordinates to Delivery Drone
+5. Delivery Drone navigates to each target and drops payload
 6. Both drones RTL when complete
 
 ---
@@ -39,7 +39,6 @@ flowchart LR
 ### 1. Install
 
 ```bash
-# Clone & setup
 git clone https://github.com/your-repo/Nidar--2025-ELKA-.git
 cd Nidar--2025-ELKA-
 
@@ -72,9 +71,13 @@ detection:
 
 camera:
   rtsp_url: "rtsp://192.168.144.25:8554/main.264"
+
+payload:
+  use_esp32: true
+  esp32_serial_port: "/dev/ttyUSB0"
 ```
 
-### 3. Test (Before Flying!)
+### 3. Test Before Flying
 
 ```bash
 # Test tracker on video
@@ -82,6 +85,9 @@ python tests/test_human_tracker.py --video /path/to/video.mp4
 
 # Test live camera (no drone)
 python tests/test_live_detection.py --track --no-mavlink
+
+# Test ESP32 payload mechanism
+python -c "from src.base.payload_esp32 import PayloadESP32; p = PayloadESP32(); p.test_servo()"
 
 # Test mission in dry-run mode
 python missions/01_survey_leader.py --test
@@ -109,57 +115,71 @@ python missions/01_survey_leader.py --kml config/geofence/sector_alpha.kml
 ```
 Nidar--2025-ELKA-/
 ├── config/
-│   ├── mission_params.yaml    # Flight, detection, tracking settings
+│   ├── mission_params.yaml    # Flight, detection, tracking, payload settings
 │   ├── network_map.yaml       # Network IPs and ports
 │   └── geofence/              # KML survey areas
 │
 ├── src/
 │   ├── base/                  # Hardware drivers
 │   │   ├── drone_pilot.py     # MAVLink flight control
-│   │   └── payload_servo.py   # Drop mechanism
+│   │   ├── payload_servo.py   # MAVLink servo control
+│   │   └── payload_esp32.py   # ESP32 + PCA9685 servo control
 │   │
-│   ├── intelligence/          # AI & Decision Making
+│   ├── intelligence/          # AI and Decision Making
 │   │   ├── human_tracker.py   # BoT-SORT tracking + counting
-│   │   ├── geotagging.py      # Pixel → GPS conversion
-│   │   └── path_finder.py     # KML → waypoints
+│   │   ├── human_detector.py  # YOLO detection only
+│   │   ├── geotagging.py      # Pixel to GPS conversion
+│   │   └── path_finder.py     # KML to waypoints
 │   │
 │   ├── comms/                 # Networking
 │   │   ├── bridge_client.py   # Drone ZMQ client
-│   │   └── relay_server.py    # Ground station
+│   │   └── relay_server.py    # Ground station server
 │   │
 │   └── utils/                 # Helpers
+│       ├── geo_math.py        # Geospatial calculations
+│       └── state_machine.py   # Mission state tracking
 │
 ├── missions/                  # Main executables
 │   ├── 00_ground_relay.py     # Laptop relay server
 │   ├── 01_survey_leader.py    # Scout drone mission
 │   └── 02_delivery_follower.py# Delivery drone mission
 │
+├── firmware/                  # Microcontroller code
+│   └── esp32_payload/         # ESP32 payload drop controller
+│       └── esp32_payload.ino  # Arduino firmware
+│
 └── tests/                     # Test scripts
     ├── test_human_tracker.py  # Test tracker on video
-    └── test_live_detection.py # Test with camera
+    ├── test_live_detection.py # Test with camera
+    └── test_geotagging.py     # Geotagging unit tests
 ```
 
 ---
 
 ## Key Features
 
-### 🎯 BoT-SORT Human Tracking
+### BoT-SORT Human Tracking
 - Persistent track IDs across frames
-- Camera motion compensation (for drone movement)
+- Camera motion compensation for drone movement
 - Re-ID appearance matching
 - Counts each person only once
 
-### 🌍 Precision Geotagging
-- Converts pixel position → GPS coordinates
-- Accounts for drone heading (rotation)
+### Precision Geotagging
+- Converts pixel position to GPS coordinates
+- Accounts for drone heading rotation
 - GSD-based calculation for altitude accuracy
 
-### 🔗 ZMQ Communication
-- Reliable message delivery with ACKs
+### ZMQ Communication
+- Reliable message delivery with acknowledgments
 - Real-time coordinate forwarding
-- Battery/status monitoring
+- Battery and status monitoring
 
-### 🛡️ Safety Features
+### ESP32 Payload Control
+- PCA9685 16-channel PWM driver
+- Serial command interface (DROP, HOLD, TEST)
+- Independent of flight controller
+
+### Safety Features
 - Battery failsafe (auto-RTL at 20%)
 - Payload exhaustion detection
 - Connection loss handling
@@ -169,7 +189,7 @@ Nidar--2025-ELKA-/
 
 ## Configuration Reference
 
-### Tracking (`mission_params.yaml`)
+### Tracking
 
 ```yaml
 tracking:
@@ -189,17 +209,49 @@ camera:
   gimbal_pitch_deg: 90       # 90 = nadir (straight down)
 ```
 
+### Payload (ESP32)
+
+```yaml
+payload:
+  use_esp32: true
+  esp32_serial_port: "/dev/ttyUSB0"
+  esp32_baud_rate: 115200
+  initial_count: 10
+  drop_altitude: 10.0
+```
+
+---
+
+## Hardware Setup
+
+### ESP32 Payload Controller
+
+```
+ESP32 (I2C)        PCA9685           Servo
+  SDA (21) ------> SDA    CH0 -----> Signal
+  SCL (22) ------> SCL               GND
+  3.3V ----------> VCC               V+
+  GND -----------> GND
+```
+
+**Firmware Upload:**
+1. Install Arduino IDE with ESP32 board support
+2. Install Adafruit PWM Servo Driver Library
+3. Open `firmware/esp32_payload/esp32_payload.ino`
+4. Upload to ESP32
+
 ---
 
 ## Troubleshooting
 
 | Problem | Solution |
 |---------|----------|
-| No detections | Lower `confidence_threshold` to 0.4-0.5 |
-| Duplicate counts | Increase `new_track_thresh` to 0.8 |
-| Wrong target GPS | Check `gimbal_pitch_deg` and heading |
-| RTSP timeout | Verify camera IP, try `ffplay rtsp://...` |
+| No detections | Lower confidence_threshold to 0.4-0.5 |
+| Duplicate counts | Increase new_track_thresh to 0.8 |
+| Wrong target GPS | Check gimbal_pitch_deg and heading |
+| RTSP timeout | Verify camera IP, try ffplay rtsp://... |
 | ZMQ connection failed | Check firewall, verify IPs match |
+| ESP32 not responding | Check serial port, verify baud rate |
 
 ---
 
@@ -209,12 +261,13 @@ camera:
 - NVIDIA GPU + CUDA (recommended)
 - ArduPilot/PX4 flight controller
 - SIYI or similar RTSP camera
+- ESP32 + PCA9685 for payload control
 - Local WiFi network
 
 ---
 
 ## License
 
-MIT License - See [LICENSE](LICENSE) for details.
+MIT License - See LICENSE file for details.
 
-> ⚠️ **Always test in simulation (SITL) before real flights. Follow local drone regulations.**
+**Always test in simulation (SITL) before real flights. Follow local drone regulations.**
