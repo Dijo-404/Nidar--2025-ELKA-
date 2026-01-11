@@ -176,22 +176,137 @@ This simulates:
 - Geotagging computing target GPS
 - Drone 2 receiving coordinates and dropping payloads
 
-### ArduPilot SITL
+### ArduPilot SITL (Full Flight Simulation)
 
-For full flight simulation with ArduPilot SITL:
+Run a complete dual-drone simulation using ArduPilot's Software-In-The-Loop (SITL).
 
+#### Prerequisites
+
+1. **Install ArduPilot**
+   ```bash
+   cd ~
+   git clone --recurse-submodules https://github.com/ArduPilot/ardupilot.git
+   cd ardupilot
+   
+   # Install dependencies
+   Tools/environment_install/install-prereqs-ubuntu.sh -y
+   
+   # Reload environment
+   . ~/.profile
+   
+   # Build ArduCopter SITL
+   ./waf configure --board sitl
+   ./waf copter
+   ```
+
+2. **Set Environment Variable**
+   ```bash
+   echo 'export ARDUPILOT_HOME=~/ardupilot' >> ~/.bashrc
+   source ~/.bashrc
+   ```
+
+3. **Install Python Dependencies**
+   ```bash
+   pip install pymavlink pexpect empy
+   ```
+
+4. **(Optional) Install QGroundControl**
+   ```bash
+   # Download AppImage
+   wget https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl.AppImage
+   chmod +x QGroundControl.AppImage
+   ./QGroundControl.AppImage
+   ```
+
+#### Network Configuration (Dual Drone)
+
+| Drone | UDP Address | System ID |
+|-------|-------------|-----------|
+| Drone 1 | `127.0.0.1:14550` | 1 |
+| Drone 2 | `127.0.0.1:14560` | 2 |
+
+#### Running the Simulation
+
+**Terminal 1: Start SITL with 2 Drones**
 ```bash
-# Start SITL for both drones
-python simulation/sitl_launcher.py
-
-# In separate terminals, run missions
-python missions/01_survey_leader.py --sitl
-python missions/02_delivery_follower.py --sitl
+cd ~/ardupilot/ArduCopter
+sim_vehicle.py --count=2 -w
 ```
 
-Requirements:
-- ArduPilot source code installed
-- Set ARDUPILOT_HOME environment variable
+Wait for both drones to initialize. You'll see:
+```
+APM: ArduCopter V4.x.x
+APM: Frame: QUAD
+```
+
+**Terminal 2: Run the Dual Drone Controller**
+```bash
+cd /path/to/Nidar--2025-ELKA-
+conda activate Nidar
+python simulation/dual_drone_controller.py
+```
+
+#### Expected Output
+
+```
+============================================================
+Dual Drone Controller - ArduPilot SITL
+============================================================
+
+Starting concurrent drone missions...
+------------------------------------------------------------
+[ID:1] Connecting to udpin:127.0.0.1:14550...
+[ID:2] Connecting to udpin:127.0.0.1:14560...
+[ID:1] Heartbeat received! (System: 1, Component: 1)
+[ID:2] Heartbeat received! (System: 2, Component: 1)
+[ID:1] Setting mode to GUIDED...
+[ID:2] Setting mode to GUIDED...
+[ID:1] Mode changed to GUIDED
+[ID:2] Mode changed to GUIDED
+[ID:1] Arming...
+[ID:2] Arming...
+[ID:1] Armed successfully!
+[ID:2] Armed successfully!
+[ID:1] Taking off to 10m...
+[ID:2] Taking off to 10m...
+[ID:1] Moving North to x=10...
+[ID:2] Moving South to x=-10...
+...
+[ID:1] Landed
+[ID:2] Landed
+------------------------------------------------------------
+All drone missions completed!
+============================================================
+```
+
+#### Visualize in QGroundControl
+
+1. Launch QGroundControl
+2. Go to **Application Settings > Comm Links**
+3. Add two UDP connections:
+   - Connection 1: `127.0.0.1:14550`
+   - Connection 2: `127.0.0.1:14560`
+4. Both drones will appear on the map
+
+#### Mission Sequence
+
+1. **Connect** - Wait for heartbeat from each drone
+2. **GUIDED Mode** - Switch to GUIDED for autonomous control
+3. **Arm** - Arm motors (with force flag for SITL)
+4. **Takeoff** - Climb to 10 meters
+5. **Move** - Drone 1 flies North (x=10m), Drone 2 flies South (x=-10m)
+6. **Return** - Both return to origin
+7. **Land** - Switch to LAND mode
+
+#### Troubleshooting SITL
+
+| Issue | Solution |
+|-------|----------|
+| `sim_vehicle.py: command not found` | Source `~/.profile` or add ArduPilot to PATH |
+| `No heartbeat received` | Check UDP port, ensure SITL is running |
+| `Mode change not confirmed` | Wait for SITL to fully initialize (GPS lock) |
+| Arm fails | Use `-w` flag to wipe EEPROM on first run |
+| Connection refused | Verify no other process is using the UDP port |
 
 ---
 

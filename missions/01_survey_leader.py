@@ -235,16 +235,7 @@ class SurveyLeaderMission:
             if not self._arm_and_takeoff():
                 return False
             
-            # Start human detection
-            camera_config = self.config.get('camera', {})
-            rtsp_url = camera_config.get('rtsp_url')
-            
-            if rtsp_url:
-                logger.info(f"Starting detection stream: {rtsp_url}")
-                self.detector.start_stream(rtsp_url)
-            else:
-                logger.warning("No RTSP URL configured - detection disabled")
-            
+
             # Execute waypoints with tracking
             self.state_machine.transition_to(MissionState.SURVEY, "Beginning survey")
             

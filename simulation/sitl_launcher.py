@@ -98,9 +98,10 @@ class SITLInstance:
             sys.executable, sim_vehicle,
             '-v', vehicle,
             '-I', str(self.instance_id),
-            '--home', home_string,
+            '--custom-location', home_string,
             '--speedup', str(speedup),
             '--out', f'udp:127.0.0.1:{self.mavproxy_port}',
+            '-w',  # Wipe EEPROM for fresh start
         ]
         
         if headless:

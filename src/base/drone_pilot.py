@@ -196,6 +196,54 @@ class DronePilot:
             
         return None
     
+    def get_heading(self) -> Optional[float]:
+        """
+        Get current heading in degrees.
+        
+        Returns:
+            Heading in degrees (0-360) or None if unavailable
+        """
+        if not self.mav:
+            return None
+            
+        msg = self.mav.recv_match(type='VFR_HUD', blocking=True, timeout=1.0)
+        if msg:
+            return msg.heading
+            
+        return None
+    
+    def wait_for_position_ready(self, timeout: float = 30.0) -> bool:
+        """
+        Wait until EKF has position estimation ready for GUIDED mode.
+        
+        Args:
+            timeout: Maximum wait time in seconds
+            
+        Returns:
+            True if position is ready
+        """
+        import time
+        start_time = time.time()
+        logger.info("Waiting for EKF position estimation...")
+        
+        while time.time() - start_time < timeout:
+            # Check if we can get a valid GPS position
+            msg = self.mav.recv_match(type='GLOBAL_POSITION_INT', blocking=True, timeout=1.0)
+            if msg and msg.lat != 0 and msg.lon != 0:
+                # Also check EKF status
+                ekf_msg = self.mav.recv_match(type='EKF_STATUS_REPORT', blocking=True, timeout=1.0)
+                if ekf_msg:
+                    # Check if position is good (flags indicate pos_horiz_abs and pos_vert_abs)
+                    pos_horiz = ekf_msg.flags & 1  # EKF_POS_HORIZ_ABS
+                    pos_vert = ekf_msg.flags & 2   # EKF_POS_VERT_ABS
+                    if pos_horiz and pos_vert:
+                        logger.info("EKF position estimation ready")
+                        return True
+            time.sleep(0.5)
+        
+        logger.warning("Timeout waiting for EKF position")
+        return False
+    
     def get_home_position(self) -> Optional[Tuple[float, float, float]]:
         """
         Get home position coordinates.
@@ -269,6 +317,11 @@ class DronePilot:
         gps = self.get_current_gps()
         if not gps:
             logger.error("Cannot arm: No GPS fix")
+            return False
+        
+        # Wait for EKF position estimation to be ready for GUIDED mode
+        if not self.wait_for_position_ready(timeout=30.0):
+            logger.error("Cannot arm: EKF position not ready")
             return False
         
         # Store home position

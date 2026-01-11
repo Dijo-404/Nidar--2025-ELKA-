@@ -57,7 +57,7 @@ payload:
 
 # Safety Parameters
 safety:
-  min_battery_voltage: 14.0      # volts - trigger RTL below this
+  min_battery_voltage: 10.5      # volts - trigger RTL below this (SITL uses 12.6V 3S)
   min_battery_percent: 20        # percent - trigger RTL below this
   max_distance_from_home: 500    # meters - geofence radius
   failsafe_rtl_altitude: 30.0    # meters - RTL altitude
