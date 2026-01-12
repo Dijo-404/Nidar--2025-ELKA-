@@ -4,6 +4,69 @@ Complete step-by-step guide for connecting and controlling two physical drones w
 
 ---
 
+## Quick Start Guide (TL;DR)
+
+Follow these steps in order to connect and test your real drones:
+
+### Step 1: Power Up & Connect to Network
+```bash
+# 1. Power on SIYI transmitter (creates hotspot)
+# 2. Power on both drones
+# 3. Connect laptop to SIYI WiFi network
+# 4. Verify you got an IP address:
+ip addr show | grep "192.168.144"
+```
+
+### Step 2: Set Static IP on Laptop
+```bash
+# Set static IP (run once)
+nmcli connection modify "SIYI_LINK" ipv4.addresses 192.168.144.100/24
+nmcli connection modify "SIYI_LINK" ipv4.method manual
+nmcli connection up "SIYI_LINK"
+```
+
+### Step 3: Verify Drones are Reachable
+```bash
+# Ping both drones
+ping -c 3 192.168.144.25    # Drone 1
+ping -c 3 192.168.144.26    # Drone 2
+```
+
+### Step 4: Test Video Feed (Optional)
+```bash
+# Test RTSP stream from Drone 1
+ffplay rtsp://192.168.144.25:8554/main.264
+```
+
+### Step 5: Run the Test Script
+```bash
+cd /home/dj/Projects/Nidar--2025-ELKA-
+conda activate Nidar
+
+# Connect and arm both drones (with video)
+python tests/test_dual_drone_connection.py \
+  --drone1 udp:192.168.144.25:14550 \
+  --drone2 udp:192.168.144.26:14551 \
+  --video-url rtsp://192.168.144.25:8554/main.264 \
+  --display-video
+```
+
+### Step 6: Verify Results
+```
+Expected output:
+✓ Drone 1 Connected
+✓ Drone 2 Connected  
+✓ Drone 1 Armed
+✓ Drone 2 Armed
+✓ Video Feed Active
+```
+
+> **⚠️ SAFETY WARNING:** Remove propellers for all bench testing!
+
+---
+
+## Detailed Setup Guide
+
 ## Prerequisites
 
 ### Hardware Required
@@ -596,6 +659,211 @@ arp -a | grep 192.168.144
 # Test RTSP
 ffplay -rtsp_transport tcp rtsp://192.168.144.25:8554/main.264
 ```
+
+---
+
+## Real Flight Procedure
+
+> **⚠️ CRITICAL:** Only proceed with real flight after successful bench testing with propellers removed!
+
+### Phase 1: Pre-Flight Preparation (Before Going to Field)
+
+```
+□ Step 1.1: Charge all batteries to 100%
+□ Step 1.2: Update firmware if needed
+□ Step 1.3: Backup flight controller parameters
+□ Step 1.4: Test script works with SITL simulation
+□ Step 1.5: Pack all equipment:
+    - Both drones with propellers
+    - All batteries (2+ per drone recommended)
+    - SIYI transmitter
+    - Laptop with Nidar software
+    - RC transmitter (for manual override)
+    - First aid kit
+```
+
+### Phase 2: Field Setup
+
+```
+□ Step 2.1: Survey the flight area
+    - Check for obstacles (trees, power lines, buildings)
+    - Identify safe landing zones
+    - Note wind direction and speed
+
+□ Step 2.2: Set up ground station
+    - Place laptop on stable surface
+    - Power on SIYI transmitter
+    - Connect laptop to SIYI WiFi
+    - Set static IP (192.168.144.100)
+
+□ Step 2.3: Position drones
+    - Place drones 5+ meters apart
+    - Level ground surface
+    - GPS antenna facing sky (no obstructions)
+```
+
+### Phase 3: Power-Up Sequence
+
+```
+□ Step 3.1: Power on Drone 1 (Surveyor)
+    - Connect battery
+    - Wait for startup sounds
+    - Verify LEDs indicate normal status
+
+□ Step 3.2: Power on Drone 2 (Deliverer)
+    - Connect battery
+    - Wait for startup sounds
+    - Verify LEDs indicate normal status
+
+□ Step 3.3: Wait 60 seconds for GPS lock
+    - Both drones should show solid green GPS LED
+    - Or blinking green (acquiring satellites)
+```
+
+### Phase 4: Connection Verification
+
+```bash
+# Step 4.1: Verify network connectivity
+ping -c 3 192.168.144.25    # Drone 1
+ping -c 3 192.168.144.26    # Drone 2
+
+# Step 4.2: Run connection test (DO NOT ARM YET)
+cd /home/dj/Projects/Nidar--2025-ELKA-
+conda activate Nidar
+
+# Just test connection without arming
+python -c "
+from pymavlink import mavutil
+import time
+
+# Test Drone 1
+m1 = mavutil.mavlink_connection('udp:192.168.144.25:14550')
+m1.wait_heartbeat(timeout=10)
+print(f'✓ Drone 1 connected: System {m1.target_system}')
+
+# Test Drone 2  
+m2 = mavutil.mavlink_connection('udp:192.168.144.26:14551')
+m2.wait_heartbeat(timeout=10)
+print(f'✓ Drone 2 connected: System {m2.target_system}')
+
+print('All connections verified!')
+"
+```
+
+### Phase 5: Pre-Arm Checks
+
+```
+□ Step 5.1: Check GPS status (must have 3D fix)
+    - Minimum 8 satellites on each drone
+    - HDOP < 2.0
+
+□ Step 5.2: Check battery status
+    - Voltage > 16V for 4S (> 24V for 6S)
+    - Percentage > 90%
+
+□ Step 5.3: Verify video feed (Drone 1)
+    ffplay rtsp://192.168.144.25:8554/main.264
+
+□ Step 5.4: Final visual inspection
+    - All propellers secure
+    - No loose wires
+    - Gimbal moves freely
+```
+
+### Phase 6: Arm and Test (With Propellers)
+
+```
+□ Step 6.1: Clear the area
+    - Everyone at least 10 meters away
+    - RC pilot ready with transmitter
+
+□ Step 6.2: Run full test
+    cd /home/dj/Projects/Nidar--2025-ELKA-
+    
+    python tests/test_dual_drone_connection.py \
+      --drone1 udp:192.168.144.25:14550 \
+      --drone2 udp:192.168.144.26:14551 \
+      --video-url rtsp://192.168.144.25:8554/main.264 \
+      --hold-time 10
+
+□ Step 6.3: Monitor during test
+    - Watch for unusual motor sounds
+    - Verify both drones arm
+    - Confirm video feed active
+    - Watch for any error messages
+
+□ Step 6.4: After successful test
+    - Both drones should disarm automatically
+    - Review test results in terminal
+```
+
+### Phase 7: Full Mission Flight
+
+```
+□ Step 7.1: Open 3 terminals
+
+# Terminal 1: Ground Relay
+python missions/00_ground_relay.py
+
+# Terminal 2: Delivery Drone (start first)
+python missions/02_delivery_follower.py
+
+# Terminal 3: Survey Drone
+python missions/01_survey_leader.py --kml config/geofence/sector_alpha.kml
+
+□ Step 7.2: Monitor flight
+    - Watch both drones visually
+    - Monitor telemetry on laptop
+    - RC pilot ready to take manual control
+
+□ Step 7.3: Emergency procedures
+    - If anything goes wrong: RC pilot takes control
+    - Trigger RTL: Switch to RTL mode on RC
+    - Kill motors: Use emergency stop if needed
+```
+
+### Phase 8: Post-Flight
+
+```
+□ Step 8.1: Power down
+    - Land both drones
+    - Disarm via script or RC
+    - Disconnect batteries
+
+□ Step 8.2: Data collection
+    - Download flight logs
+    - Save detection snapshots
+    - Note any issues for review
+
+□ Step 8.3: Equipment check
+    - Inspect for damage
+    - Check propeller condition
+    - Verify battery health
+```
+
+---
+
+## Emergency Procedures
+
+### If Drone Loses Connection
+
+1. **RC Pilot**: Take manual control immediately
+2. **Switch to STABILIZE or LOITER mode**
+3. **Land at nearest safe location**
+4. **Do NOT re-attempt autonomous flight**
+
+### If Drone Behaves Erratically
+
+1. **RC Pilot**: Switch to STABILIZE mode
+2. **Reduce throttle to descend**
+3. **Land immediately**
+4. **Kill motors if on ground**
+
+### If Video Feed Lost
+
+1. **Continue mission if GPS tracking active**
+2. **Or trigger RTL to abort mission**
+3. **Investigate camera/transmitter after landing**
 
 ---
 
