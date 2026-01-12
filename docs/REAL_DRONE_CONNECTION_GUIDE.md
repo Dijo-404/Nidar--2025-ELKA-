@@ -25,6 +25,168 @@ pip install pymavlink pyserial opencv-python
 
 ---
 
+## Running the Test Script
+
+The test script `tests/test_dual_drone_connection.py` connects to both drones, arms them, and optionally captures video from Drone 1.
+
+### Basic Usage
+
+```bash
+cd /home/dj/Projects/Nidar--2025-ELKA-
+conda activate Nidar
+
+# Run with default settings (requires drones on the network)
+python tests/test_dual_drone_connection.py \
+  --drone1 udp:192.168.144.25:14550 \
+  --drone2 udp:192.168.144.26:14551
+```
+
+### Command-Line Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--drone1` | Drone 1 MAVLink connection string | `udpin:127.0.0.1:14550` |
+| `--drone2` | Drone 2 MAVLink connection string | `udpin:127.0.0.1:14560` |
+| `--sitl` | Enable SITL mode (force-arm, skip checks) | Disabled |
+| `--video-url` | RTSP URL for Drone 1 camera | None |
+| `--display-video` | Show live video in a window | Disabled |
+| `--video-duration` | Duration to display video (seconds) | 10 |
+| `--hold-time` | Time to hold armed state (seconds) | 5 |
+
+### Example Commands
+
+**1. USB Serial Connection (SiK Radios):**
+```bash
+python tests/test_dual_drone_connection.py \
+  --drone1 /dev/ttyUSB0 \
+  --drone2 /dev/ttyUSB1
+```
+
+**2. WiFi/UDP Connection:**
+```bash
+python tests/test_dual_drone_connection.py \
+  --drone1 udp:192.168.144.25:14550 \
+  --drone2 udp:192.168.144.26:14551
+```
+
+**3. With Video Feed (No Display):**
+```bash
+python tests/test_dual_drone_connection.py \
+  --drone1 udp:192.168.144.25:14550 \
+  --drone2 udp:192.168.144.26:14551 \
+  --video-url rtsp://192.168.144.25:8554/main.264
+```
+
+**4. With Live Video Display:**
+```bash
+python tests/test_dual_drone_connection.py \
+  --drone1 udp:192.168.144.25:14550 \
+  --drone2 udp:192.168.144.26:14551 \
+  --video-url rtsp://192.168.144.25:8554/main.264 \
+  --display-video \
+  --video-duration 30
+```
+
+**5. Extended Armed Hold Time:**
+```bash
+python tests/test_dual_drone_connection.py \
+  --drone1 udp:192.168.144.25:14550 \
+  --drone2 udp:192.168.144.26:14551 \
+  --hold-time 20
+```
+
+**6. Mixed Connection (Serial + UDP):**
+```bash
+python tests/test_dual_drone_connection.py \
+  --drone1 /dev/ttyUSB0 \
+  --drone2 udp:192.168.144.26:14551 \
+  --video-url rtsp://192.168.144.25:8554/main.264
+```
+
+### What the Script Does
+
+1. **Connects** to both drones in parallel
+2. **Retrieves status** (battery, GPS, mode) from each drone
+3. **Sets GUIDED mode** on both drones
+4. **Arms** both drones simultaneously
+5. **Captures video** from Drone 1 (if URL provided)
+6. **Saves snapshot** from video feed
+7. **Holds armed state** for specified duration
+8. **Disarms** both drones
+9. **Displays results** summary
+
+### Expected Output
+
+```
+============================================================
+DUAL DRONE CONNECTION & ARMING TEST
+============================================================
+Mode: REAL FLIGHT
+
+[STEP 1] Connecting to drones...
+----------------------------------------
+[Drone 1] Connecting to udp:192.168.144.25:14550...
+[Drone 2] Connecting to udp:192.168.144.26:14551...
+[Drone 1] ✓ Connected! (System: 1, Component: 1)
+[Drone 2] ✓ Connected! (System: 2, Component: 1)
+
+[STEP 2] Checking system status...
+----------------------------------------
+Drone 1 Status:
+  Mode: STABILIZE
+  Armed: False
+  Battery: 16.45V (87%)
+  GPS: Fix=3, Satellites=12
+
+Drone 2 Status:
+  Mode: STABILIZE
+  Armed: False
+  Battery: 16.32V (85%)
+  GPS: Fix=3, Satellites=11
+
+[STEP 3] Setting GUIDED mode...
+----------------------------------------
+[Drone 1] ✓ Mode set to GUIDED
+[Drone 2] ✓ Mode set to GUIDED
+
+[STEP 4] Arming both drones...
+----------------------------------------
+✓ Drone 1: ARMED
+✓ Drone 2: ARMED
+
+[STEP 5] Starting video feed from Drone 1...
+----------------------------------------
+[Drone 1 Video] ✓ Video stream opened: 1920x1080 @ 30.0 FPS
+[Drone 1 Video] ✓ Snapshot saved: drone1_snapshot_20260112_201500.jpg
+
+[STEP 6] Holding armed state for 5 seconds...
+----------------------------------------
+
+[CLEANUP] Disarming and disconnecting...
+----------------------------------------
+[Drone 1] ✓ Disarmed
+[Drone 2] ✓ Disarmed
+
+============================================================
+TEST RESULTS
+============================================================
+Drone 1 Connected: ✓ Pass
+Drone 2 Connected: ✓ Pass
+Drone 1 Armed:     ✓ Pass
+Drone 2 Armed:     ✓ Pass
+Video Feed:        ✓ Pass
+============================================================
+```
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | All tests passed |
+| 1 | One or more tests failed |
+
+---
+
 ## Network Architecture
 
 ```
