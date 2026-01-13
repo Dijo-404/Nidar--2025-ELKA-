@@ -1,0 +1,67 @@
+# Survey Drone Mission Configuration
+
+# Video Source
+video:
+  source: 0                          # Camera index, RTSP URL, or file path
+  # source: "rtsp://192.168.144.25:8554/main.264"
+  width: 1280
+  height: 720
+  fps: 30
+
+# Human Detection (Custom YOLO with BoT-SORT tracking)
+detection:
+  # Custom-trained model path
+  model: "/home/dj/Projects/Nidar--2025-ELKA-/best_model/dj_yolo_best/weights/best.pt"
+  
+  # Detection settings
+  confidence: 0.4                    # Detection confidence threshold
+  iou_threshold: 0.5                 # IOU threshold for NMS
+  classes: [0]                       # COCO class 0 = person
+  imgsz: 640                         # Detection image size
+  device: ""                         # "" = auto, "cpu", "cuda:0"
+  
+  # BoT-SORT Tracker settings
+  use_tracker: true
+  tracker_type: "botsort"
+  track_high_thresh: 0.5             # High confidence detection threshold
+  track_low_thresh: 0.1              # Low confidence for second association
+  new_track_thresh: 0.7              # Higher = fewer spurious new tracks
+  track_buffer: 90                   # Frames to keep lost tracks (1.5s @ 60fps)
+  match_thresh: 0.7                  # Association threshold
+  gmc_method: "sparseOptFlow"        # Camera motion compensation
+  with_reid: true                    # Re-ID appearance matching
+  proximity_thresh: 0.5
+  appearance_thresh: 0.25
+
+# GPS Source
+gps:
+  enabled: true
+  source: "mavlink"                  # "mavlink", "serial", or "simulated"
+  mavlink_connection: "udpin:0.0.0.0:14550"
+  serial_port: "/dev/ttyACM0"
+  serial_baud: 115200
+
+# Survey Area (KML from main project geofence folder)
+survey:
+  kml_file: "/home/dj/Projects/Nidar--2025-ELKA-/config/geofence/sector_alpha.kml"
+  altitude: 25.0                     # Survey altitude in meters
+  sweep_spacing: 15.0                # Meters between sweep lines
+  waypoint_interval: 20.0            # Meters between waypoints
+
+# Display
+display:
+  show_video: true
+  show_gps: true
+  show_detections: true
+  show_waypoints: true
+  show_track_ids: true               # Show track IDs on detections
+  window_width: 1280
+  window_height: 720
+  font_scale: 0.6
+
+# Logging
+logging:
+  output_dir: "output"
+  save_detections: true
+  save_images: true
+  csv_file: "detections.csv"
